@@ -1,6 +1,7 @@
 # **Movie Recommendation System**
 
 ## Overview
+This is the third phase of a four-part project for the Advanced System Programming (Full Stack) course (part 4 will be public after university grading)
 
 This project implements the server-side functionality for a movie recommendation application. It provides a RESTful API for user management, movie management, category management, and integrates with a recommendation system.
 
