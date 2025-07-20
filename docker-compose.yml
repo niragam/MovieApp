@@ -1,0 +1,52 @@
+version: '3.8'
+
+networks:
+  My-network:
+    driver: bridge
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: mongo-netflix
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - My-network
+
+  web-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.web-ser
+    container_name: web-ser
+    ports:
+      - "3000:3000"
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/netflix
+      RECSERVER_HOST: recserver
+      RECSERVER_PORT: 8000
+    volumes:
+      - ./src:/app/src
+    networks:
+      - My-network
+    depends_on:
+      - mongodb
+      - recserver
+
+  recserver:
+    build:
+      context: .
+      dockerfile: Dockerfile.recserver
+    container_name: recserver
+    ports:
+      - "8000:8000"
+    networks:
+      - My-network
+    depends_on:
+      - mongodb
+
+volumes:
+  mongodb_data:
+    driver: local
