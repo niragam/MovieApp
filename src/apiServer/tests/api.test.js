@@ -244,8 +244,21 @@ describe('search', () => {
         expect(await titles('zzz')).toEqual([]);
     });
 
-    test('results are capped at 50', async () => {
+    test('any movie field counts: duration, full date, URLs, id', async () => {
+        await newCategory('Docs');
+        const id = await newMovie({
+            title: 'Plain', categories: ['Docs'], duration: 136, releaseDate: '2001-05-17',
+            videoUrl: 'https://cdn.example.com/UniqueClip.mp4', posterUrl: 'https://img.example.com/p.jpg'
+        });
+        expect(await titles('136')).toContain('Plain');
+        expect(await titles('2001-05-17')).toEqual(['Plain']);
+        expect(await titles('uniqueclip')).toEqual(['Plain']);
+        expect(await titles(id)).toEqual(['Plain']);
+        expect(await titles('1999-03')).toEqual(['The Matrix']);
+    });
+
+    test('returns every match (no cap)', async () => {
         for (let i = 0; i < 55; i++) await newMovie({ title: `Bulk ${i}`, categories: ['Drama'] });
-        expect((await search('bulk')).body).toHaveLength(50);
+        expect((await search('bulk')).body).toHaveLength(55);
     });
 });

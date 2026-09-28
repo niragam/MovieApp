@@ -8,7 +8,6 @@ const { toMovieDto } = require('../services/movieDto');
 const { escapeRegex } = require('../services/validation');
 
 const MAX_ROW_MOVIES = 20;
-const MAX_SEARCH_RESULTS = 50;
 const CATEGORY_NAMES = { path: 'categories', select: 'name' };
 
 // Fisher-Yates shuffle (returns a new array)
@@ -228,8 +227,9 @@ const recommendMovies = async (req, res) => {
     res.status(200).json(ids.map(id => byId.get(id)).filter(Boolean).map(toMovieDto));
 };
 
-// Case-insensitive literal match on title, description or category name; a four-digit
-// query also matches the release year.
+// A movie matches when the query is contained (case-insensitively, literally) in any of
+// its fields, as the assignment defines search: id, title, description, media URLs,
+// duration, release date (YYYY-MM-DD) or one of its category names.
 const searchMovies = async (req, res) => {
     const query = (req.params.query || '').trim();
     if (!query) {
@@ -237,20 +237,29 @@ const searchMovies = async (req, res) => {
     }
     const pattern = new RegExp(escapeRegex(query), 'i');
 
-    const matchingCategories = await categoryModel.find({ name: pattern }, { _id: 1 });
-    const criteria = [
-        { title: pattern },
-        { description: pattern },
-        { categories: { $in: matchingCategories.map(category => category._id) } }
-    ];
-    if (/^\d{4}$/.test(query)) {
-        const year = Number(query);
-        criteria.push({ releaseDate: { $gte: new Date(Date.UTC(year, 0, 1)), $lt: new Date(Date.UTC(year + 1, 0, 1)) } });
-    }
+    const matches = await movieModel.aggregate([
+        { $lookup: { from: 'categories', localField: 'categories', foreignField: '_id', as: 'categoryDocs' } },
+        {
+            $addFields: {
+                // Every field as text; a regex on an array matches if any element does
+                searchText: [
+                    { $toString: '$_id' },
+                    '$title',
+                    { $ifNull: ['$description', ''] },
+                    { $ifNull: ['$posterUrl', ''] },
+                    { $ifNull: ['$backdropUrl', ''] },
+                    { $ifNull: ['$videoUrl', ''] },
+                    { $toString: { $ifNull: ['$duration', ''] } },
+                    { $dateToString: { format: '%Y-%m-%d', date: '$releaseDate', onNull: '' } },
+                ]
+            }
+        },
+        { $match: { $or: [{ searchText: pattern }, { 'categoryDocs.name': pattern }] } },
+        { $project: { _id: 1 } }
+    ]);
 
-    const movies = await movieModel.find({ $or: criteria })
+    const movies = await movieModel.find({ _id: { $in: matches.map(m => m._id) } })
         .sort({ title: 1 })
-        .limit(MAX_SEARCH_RESULTS)
         .populate(CATEGORY_NAMES);
     res.status(200).json(movies.map(toMovieDto));
 };

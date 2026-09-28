@@ -34,7 +34,7 @@ A movie streaming and recommendation platform: a React frontend, a Node.js/Expre
 |---------|-------------|
 | **Accounts** | Registration (with optional profile image URL) and JWT login; passwords are hashed with bcrypt |
 | **Browsing** | Featured movie, one row per promoted category (up to 20 random unwatched movies), and a Watch History row (the 20 most recently watched, in random order) |
-| **Search** | Case-insensitive search over title, description, category name and release year |
+| **Search** | Case-insensitive search: a movie matches when the query appears in any of its fields |
 | **Playback** | Video player with play/pause, seeking, volume and fullscreen; opening the player records the view |
 | **Recommendations** | "More Like This" from the C++ engine, based on similar users' histories |
 | **Admin** | Manage categories and movies (including poster, backdrop and video URLs) |
@@ -139,7 +139,7 @@ A movie is `{ id, title, description, categories: [names], releaseDate, releaseY
 | `/api/movies/:id` | DELETE | admin | Delete (also removed from histories) |
 | `/api/movies/:id/recommend` | GET | user | Up to 10 recommended movies for the current user |
 | `/api/movies/:id/recommend` | POST | user | Record that the current user watched the movie (204) |
-| `/api/movies/search/:query` | GET | none | Up to 50 matches (title, description, category, 4-digit year) |
+| `/api/movies/search/:query` | GET | none | Movies where the query is contained in any field (id, title, description, URLs, duration, release date `YYYY-MM-DD`, category names) |
 
 ---
 
