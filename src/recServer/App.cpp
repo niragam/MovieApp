@@ -1,6 +1,8 @@
 #include "App.h"
 #include "threadpool/ThreadPool.h"
 
+#include <cerrno>
+#include <csignal>
 #include <iostream>
 #include <string>
 #include <sys/socket.h>
@@ -9,10 +11,9 @@
 #include <thread>
 #include <vector>
 
-const std::string App::dataFile = "data/user_data.txt";
 int server_fd;
 
-App::App()
+App::App(std::string dataFile) : dataFile(std::move(dataFile))
 {
     // Register commands for handling HTTP-like requests (POST, PATCH, GET, DELETE, help)
     commands["POST"] = std::make_unique<POSTCommand>(manager);
@@ -28,6 +29,8 @@ int App::run(int argc, char **argv)
     {
         return 1;  // Return error if not
     }
+    // A client that disconnects mid-reply must not kill the server (send uses MSG_NOSIGNAL too).
+    std::signal(SIGPIPE, SIG_IGN);
     try
     {
         int port = std::stoi(argv[1]);  // Convert the port argument to an integer
@@ -93,45 +96,82 @@ void App::acceptMultipleClients(int server_fd, struct sockaddr_in &address)
     }
 }
 
-void App::handleClient(int client_socket)
-{
-    while (true)
-    {
-        std::string received_message = receiveMessage(client_socket);
-        if (received_message.empty())  // If no message is received, terminate the loop
-        {
-            break;
-        }
-        std::istringstream input(received_message);
-        std::string command;
-        input >> command;
-        std::ostringstream output;
-        executeCommand(command, input, output);  // Execute the command and capture the output
-        std::string response = output.str();    // Convert output to string
+// Maximum accepted request line length; longer lines are rejected and the connection closed.
+static const size_t MAX_LINE_LENGTH = 64 * 1024;
 
-        send(client_socket, response.c_str(), response.length(), 0);  // Send the response to the client
-        manager.saveData(dataFile);  // Save data after handling each client
+// Writes the whole buffer, retrying on partial writes. Returns false if the peer is gone.
+static bool sendAll(int socket, const std::string &data)
+{
+    size_t sent = 0;
+    while (sent < data.size())
+    {
+        ssize_t n = send(socket, data.data() + sent, data.size() - sent, MSG_NOSIGNAL);
+        if (n < 0 && errno == EINTR)
+        {
+            continue;
+        }
+        if (n <= 0)
+        {
+            return false;
+        }
+        sent += static_cast<size_t>(n);
     }
-    close(client_socket);  // Close the client socket after finishing the communication
+    return true;
 }
 
-// Receives a message from the client socket
-std::string App::receiveMessage(int client_socket)
+// Executes one request line and returns the newline-terminated response.
+std::string App::processLine(const std::string &line)
 {
-    std::vector<char> buffer(1024);  // Buffer to store incoming data
-    std::string message;
-    ssize_t bytes_read;
+    std::istringstream input(line);
+    std::string command;
+    input >> command;
+    std::ostringstream output;
+    executeCommand(command, input, output);
+    manager.saveData(dataFile);  // Save data after handling each request
+    return output.str() + "\n";
+}
 
-    // Read data until a newline or EOF is encountered
-    while ((bytes_read = read(client_socket, buffer.data(), buffer.size())) > 0)
+// Protocol: every request is one line terminated by '\n' (a trailing '\r' is ignored),
+// and every response is exactly one line terminated by '\n'. TCP is a byte stream, so
+// bytes are buffered until complete lines are available; one read may carry several
+// requests, or only part of one.
+void App::handleClient(int client_socket)
+{
+    std::string buffer;
+    char chunk[4096];
+    while (true)
     {
-        message.append(buffer.data(), bytes_read);
-        if (message.find('\n') != std::string::npos)  // End of message found
+        size_t newline;
+        while ((newline = buffer.find('\n')) != std::string::npos)
         {
-            break; 
+            std::string line = buffer.substr(0, newline);
+            buffer.erase(0, newline + 1);
+            if (!line.empty() && line.back() == '\r')
+            {
+                line.pop_back();
+            }
+            if (!sendAll(client_socket, processLine(line)))
+            {
+                return;
+            }
         }
+        if (buffer.size() > MAX_LINE_LENGTH)
+        {
+            sendAll(client_socket, "400 Bad Request\n");
+            return;
+        }
+        ssize_t bytes_read = read(client_socket, chunk, sizeof(chunk));
+        if (bytes_read < 0 && errno == EINTR)
+        {
+            continue;
+        }
+        if (bytes_read <= 0)  // EOF, error or receive timeout: end the session
+        {
+            return;
+        }
+        buffer.append(chunk, static_cast<size_t>(bytes_read));
     }
-    return message;
+    // The socket is closed by the thread pool worker that owns it, not here.
 }
 
 void App::executeCommand(const std::string &name, std::istringstream &input, std::ostringstream &output)

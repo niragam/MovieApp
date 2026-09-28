@@ -1,11 +1,6 @@
 const User = require('../models/users');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../auth/auth');
-require('dotenv').config();
-const net = require('net');
-
-const externalServerHost = process.env.RECSERVER_HOST || "recserver";
-const externalServerPort = process.env.RECSERVER_PORT || 8000;
 
 const createUser = async (req, res) => {
     try {
@@ -37,24 +32,7 @@ const createUser = async (req, res) => {
         });
 
         await user.save();
-        // Send a message to the external server
-        const client = new net.Socket();
-
-        const message = `POST ${user._id} 1\n`;
-        const message2 = `DELETE ${user._id} 1\n`;
-
-        client.connect(externalServerPort, externalServerHost, () => {
-            client.write(message);
-            setTimeout(() => {
-                client.write(message2);
-                client.end();
-            }, 300);
-        });
-
-        client.on('error', () => {
-            // Silently handle connection errors to external server
-        });
-
+        // No recommendation-server call here: it creates users on their first watch.
         res.status(201)
             .location(`/api/users/${user._id}`)
             .json({ message: 'User created successfully' });

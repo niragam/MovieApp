@@ -1,12 +1,8 @@
 const mongoose = require('mongoose');
-require('dotenv').config();
 const movieModel = require('../models/movies');
 const categoryModel = require('../models/categories');
 const userModel = require('../models/users');
-const net = require('net');
-
-const externalServerHost = process.env.RECSERVER_HOST || "recserver";
-const externalServerPort = process.env.RECSERVER_PORT || 8000;
+const recClient = require('../services/recClient');
 
 const createMovie = async (req, res) => {
     try {
@@ -123,20 +119,20 @@ const deleteMovie = async (req, res) => {
         if (!movie) {
             return res.status(404).json({ error: 'Movie not found' });
         }
-        // Delete the movie from users' watch history
-        await userModel.updateMany({}, { $pull: { watchHistory: movieId } });
+        // Only users who watched the movie need their recommendation data updated
+        const watchers = await userModel.find({ watchHistory: movieId }, { _id: 1 });
 
-        // Delete the movie from the database
+        await userModel.updateMany({}, { $pull: { watchHistory: movieId } });
         await movieModel.findByIdAndDelete(movieId);
 
-        const users = await userModel.find();
-        for (const user of users) {
-            const message = `DELETE ${user._id} ${movieId}\n`;
-            const client = new net.Socket();
-            client.connect(externalServerPort, externalServerHost, () => {
-                client.write(message);
-                client.end();
-            });
+        // MongoDB is the source of truth; if the recommendation server is unreachable,
+        // the startup resync (services/recSync.js) repairs it later.
+        for (const watcher of watchers) {
+            try {
+                await recClient.send(`DELETE ${watcher._id} ${movieId}`);
+            } catch (error) {
+                console.error(`Could not remove movie ${movieId} for user ${watcher._id}:`, error.message);
+            }
         }
         res.status(204).end();
 
@@ -253,21 +249,23 @@ const watchMovie = async (req, res) => {
         user.watchHistory.push(movieId);
         await user.save();
 
-        // Send a message to the external server
-        const client = new net.Socket();
+        // Send the user's full history: PATCH is idempotent, so this also repairs any
+        // earlier divergence between MongoDB and the recommendation server.
+        try {
+            const reply = await recClient.send(`PATCH ${userId} ${user.watchHistory.join(' ')}`);
+            if (reply.code !== 204) {
+                console.error(`Recommendation server rejected PATCH: ${reply.code} ${reply.reason}`);
+                return res.status(502).json({ error: 'Recommendation service rejected the update' });
+            }
+        } catch (error) {
+            if (error instanceof recClient.RecServerError) {
+                console.error(error.message);
+                return res.status(502).json({ error: 'Recommendation service unavailable' });
+            }
+            throw error;
+        }
 
-        const message = `PATCH ${userId} ${movieId}\n`;
-        client.connect(externalServerPort, externalServerHost, () => {
-            client.write(message);
-
-            client.on('data', (data) => {
-                const response = data.toString();
-                // statusCode = first word of response turned into a number
-                const statusCode = parseInt(response.split(' ')[0]);
-                res.status(statusCode).end();
-                client.end();
-            });
-        });
+        res.status(204).end();
 
     } catch (error) {
         console.error(error);
@@ -295,30 +293,22 @@ const recommendMovies = async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        // Send a message to the external server
-        const client = new net.Socket();
+        let reply;
+        try {
+            reply = await recClient.send(`GET ${userId} ${movieId}`);
+        } catch (error) {
+            if (error instanceof recClient.RecServerError) {
+                console.error(error.message);
+                return res.status(503).json({ error: 'Recommendation service unavailable' });
+            }
+            throw error;
+        }
+        if (reply.code !== 200) {
+            console.error(`Recommendation server rejected GET: ${reply.code} ${reply.reason}`);
+            return res.status(502).json({ error: 'Recommendation service error' });
+        }
 
-        const message = `GET ${userId} ${movieId}\n`;
-        client.connect(externalServerPort, externalServerHost, () => {
-            client.write(message);
-
-            client.on('data', (data) => {
-                const response = data.toString();
-                let parts = response.split("\n\n");
-
-                // statusCode = first word of response turned into a number
-                let statusCode = parseInt(parts[0].split(' ')[0]);
-                if (statusCode === 200) {
-                    res.status(statusCode).json({
-                        "Recommended Movies": parts[1].toString().trim()
-                    });
-                }
-                else {
-                    res.status(statusCode).end();
-                }
-                client.end();
-            });
-        });
+        res.status(200).json({ "Recommended Movies": reply.ids.join(' ') });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }

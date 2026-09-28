@@ -74,6 +74,25 @@ bool MovieManager::addMovies(const std::string &userId, const std::vector<std::s
     return true;
 }
 
+// Adds movies to the user's list, creating the user first if it does not exist.
+// Done under one lock so a concurrent request can never observe a half-created user.
+void MovieManager::addUserMovies(const std::string &userId, const std::vector<std::string> &movieIds)
+{
+    std::unique_lock<std::shared_mutex> lock(managerMutex);
+    auto reqUser = std::find_if(users.begin(), users.end(),
+                                [&userId](const User &user)
+                                { return user.getUserId() == userId; });
+    if (reqUser == users.end())
+    {
+        users.push_back(User(userId));
+        reqUser = users.end() - 1;
+    }
+    for (const auto &movieId : movieIds)
+    {
+        reqUser->addMovie(movieId);
+    }
+}
+
 // Delete movies to the specified user's list
 bool MovieManager::deleteMovies(const std::string &userId, const std::vector<std::string> &movieIds)
 {
@@ -187,11 +206,10 @@ std::vector<std::string> MovieManager::recommendMovies(std::string userid, std::
     std::shared_lock<std::shared_mutex> lock(managerMutex);
     // Check if the user exists
     std::vector<std::string> recommendations = {};
+    // An unknown user simply has no history, so there is nothing to recommend
     User user = getUser(userid);
     if (user.getUserId() == "0")
     {
-        recommendations.resize(1);
-        recommendations[0] = "0";
         return recommendations;
     }
 

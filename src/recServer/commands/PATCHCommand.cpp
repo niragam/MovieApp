@@ -2,7 +2,7 @@
 
 PATCHCommand::PATCHCommand(MovieManager &manager) : manager(manager) {}
 
-// Function to add a user and their watched movies if the user exist
+// Adds watched movies to a user, creating the user if needed
 void PATCHCommand::execute(std::istringstream &input, std::ostream &output)
 {
     std::string userId;
@@ -25,15 +25,10 @@ void PATCHCommand::execute(std::istringstream &input, std::ostream &output)
             output << "400 Bad Request";
             return;
         }
-        User user = manager.getUser(userId);
-        if (user.getUserId() == "0")
-        {
-            output << "404 Not Found";
-            return;
-        }
-
+        // PATCH is an upsert: the web server sends a user's full history, so the
+        // recommendation data can be rebuilt even if this server lost its state.
+        manager.addUserMovies(userId, movieIds);
         output << "204 No Content";
-        manager.addMovies(userId, movieIds); // Add movies to the user
     }
     catch (const std::invalid_argument &e)
     {

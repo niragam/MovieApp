@@ -42,11 +42,13 @@ services:
     container_name: recserver
     ports:
       - "8000:8000"
+    volumes:
+      - recserver_data:/app/data
     networks:
       - My-network
-    depends_on:
-      - mongodb
 
 volumes:
   mongodb_data:
+    driver: local
+  recserver_data:
     driver: local

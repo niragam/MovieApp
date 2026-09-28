@@ -19,6 +19,7 @@ public:
     bool addUser(const std::string &userId);                                                       // adding the user to the program.
     User getUser(const std::string &userId);                                                       // getting the user.
     bool addMovies(const std::string &userId, const std::vector<std::string> &movieIds);     // add movies to this given user.
+    void addUserMovies(const std::string &userId, const std::vector<std::string> &movieIds); // add movies, creating the user if needed (atomic).
     bool deleteMovies(const std::string &userId, const std::vector<std::string> &movieIds);     // delete movies to this given user.
     void saveData(const std::string &filename) const;                                                    // saving the data to this file.
     void loadData(const std::string &filename);                                                          // loading the data from this file.

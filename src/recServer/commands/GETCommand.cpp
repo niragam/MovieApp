@@ -27,20 +27,15 @@ void GETCommand::execute(std::istringstream &input, std::ostream &output)
         std::vector<std::string> recommendations = manager.recommendMovies(userId, referenceMovieId); // Get recommendations
         if (recommendations.empty())
         {
-            output << "200 Ok\n\n"; // End the recommendations with a newline
-            return;                 // No recommendations, exit the function
-        }
-
-        if (recommendations[0] == "0")
-        { // if there is no user like that
-            output << "404 Not Found";
+            output << "200 Ok"; // No recommendations
             return;
         }
-        output << "200 Ok\n\n";
 
-        for (std::string rec : recommendations) // Output recommendations
+        // Response is a single line: "200 Ok\t<id1> <id2> ..."
+        output << "200 Ok\t";
+        for (size_t i = 0; i < recommendations.size(); ++i)
         {
-            output << rec << " ";
+            output << (i ? " " : "") << recommendations[i];
         }
     }
     catch (const std::invalid_argument &e)
