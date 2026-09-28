@@ -14,7 +14,7 @@ describe('credentials and tokens', () => {
         expect(token).toEqual(expect.any(String));
         const stored = await mongoose.connection.db.collection('users').findOne({ username: 'carol' });
         expect(stored.password).not.toBe('Passw0rd1');
-        expect(stored.password).toMatch(/^\$2/);
+        expect(stored.password).toMatch(/^scrypt\$[0-9a-f]{32}\$[0-9a-f]{128}$/);
     });
 
     test('a token signed with another secret is rejected', async () => {

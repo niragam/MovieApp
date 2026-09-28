@@ -1,15 +1,17 @@
 // One-off migration: hash any passwords still stored in plaintext.
-// bcrypt hashes start with "$2"; anything else is treated as plaintext.
+// Hashed values start with "scrypt$" (see services/passwords.js); anything else is
+// treated as plaintext.
 // Usage: MONGO_URI=mongodb://localhost:27017/netflix node src/apiServer/scripts/hash-passwords.js
 require('dotenv').config();
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const { hashPassword, isHashed } = require('../services/passwords');
 
 const hashPlaintextPasswords = async (db) => {
     const users = db.collection('users');
     let hashed = 0;
-    for await (const user of users.find({ password: { $not: /^\$2/ } })) {
-        await users.updateOne({ _id: user._id }, { $set: { password: await bcrypt.hash(user.password, 10) } });
+    for await (const user of users.find({}, { projection: { password: 1 } })) {
+        if (isHashed(user.password)) continue;
+        await users.updateOne({ _id: user._id }, { $set: { password: await hashPassword(String(user.password)) } });
         hashed++;
     }
     return hashed;

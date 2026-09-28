@@ -1,9 +1,7 @@
 const User = require('../models/users');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
 const { getJwtSecret } = require('../auth/auth');
-
-const BCRYPT_ROUNDS = 10;
+const { hashPassword, verifyPassword } = require('../services/passwords');
 
 const toProfile = user => ({
     id: user._id,
@@ -45,7 +43,7 @@ const createUser = async (req, res) => {
     // No recommendation-server call here: it creates users on their first watch.
     const user = await User.create({
         username,
-        password: await bcrypt.hash(password, BCRYPT_ROUNDS),
+        password: await hashPassword(password),
         name,
         avatarUrl: avatarUrl || null
     });
@@ -71,7 +69,7 @@ const loginUser = async (req, res) => {
     }
 
     const user = typeof username === 'string' ? await User.findOne({ username }) : null;
-    if (!user || typeof password !== 'string' || !(await bcrypt.compare(password, user.password))) {
+    if (!user || typeof password !== 'string' || !(await verifyPassword(password, user.password))) {
         return res.status(401).json({ error: 'Invalid credentials' });
     }
 

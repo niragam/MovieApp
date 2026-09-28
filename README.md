@@ -32,7 +32,7 @@ A movie streaming and recommendation platform: a React frontend, a Node.js/Expre
 
 | Feature | Description |
 |---------|-------------|
-| **Accounts** | Registration (with optional profile image URL) and JWT login; passwords are hashed with bcrypt |
+| **Accounts** | Registration (with optional profile image URL) and JWT login; passwords are hashed with scrypt (Node's built-in crypto) |
 | **Browsing** | Featured movie, one row per promoted category (up to 20 random unwatched movies), and a Watch History row (the 20 most recently watched, in random order) |
 | **Search** | Case-insensitive search: a movie matches when the query appears in any of its fields |
 | **Playback** | Video player with play/pause, seeking, volume and fullscreen; opening the player records the view |
@@ -46,7 +46,7 @@ A movie streaming and recommendation platform: a React frontend, a Node.js/Expre
 | Layer | Technology |
 |-------|------------|
 | Frontend | React 19, TypeScript, Vite 7, TailwindCSS 4, React Router 7 |
-| API | Node.js, Express, Mongoose, jsonwebtoken, bcryptjs |
+| API | Node.js, Express, Mongoose, jsonwebtoken |
 | Database | MongoDB |
 | Recommendations | C++17, CMake, POSIX sockets, thread pool |
 | Tests | Jest, supertest, mongodb-memory-server; GoogleTest |
