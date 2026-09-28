@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const userRoutes = require('./routes/users');
+const tokenRoutes = require('./routes/tokens');
 const categoryRoutes = require('./routes/categories');
 const movieRoutes = require('./routes/movies');
 
@@ -19,6 +20,7 @@ app.disable('etag');
 
 // API Routes
 app.use('/api/users', userRoutes);
+app.use('/api/tokens', tokenRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/movies', movieRoutes);
 

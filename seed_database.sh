@@ -90,7 +90,7 @@ echo ""
 # Login as Admin and get token
 # -----------------------------------------------------------------------------
 echo "Logging in as admin..."
-LOGIN_RESULT=$(api_call POST "/users/tokens" '{"username": "admin", "password": "Admin123!"}')
+LOGIN_RESULT=$(api_call POST "/tokens" '{"username": "admin", "password": "Admin123!"}')
 ADMIN_TOKEN=$(echo "$LOGIN_RESULT" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
 if [ -z "$ADMIN_TOKEN" ]; then
@@ -114,7 +114,7 @@ db.users.updateOne(
 ' 2>/dev/null || echo "   Could not set admin role automatically"
 
 # Re-login to get updated token with admin role
-LOGIN_RESULT=$(api_call POST "/users/tokens" '{"username": "admin", "password": "Admin123!"}')
+LOGIN_RESULT=$(api_call POST "/tokens" '{"username": "admin", "password": "Admin123!"}')
 ADMIN_TOKEN=$(echo "$LOGIN_RESULT" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 echo "   Admin role configured"
 echo ""

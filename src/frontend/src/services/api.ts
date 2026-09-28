@@ -48,7 +48,7 @@ export const register = async (username: string, password: string, name: string)
 };
 
 export const login = async (username: string, password: string): Promise<LoginResponse> => {
-    const data = await apiRequest<LoginResponse>('/users/tokens', {
+    const data = await apiRequest<LoginResponse>('/tokens', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
     });
