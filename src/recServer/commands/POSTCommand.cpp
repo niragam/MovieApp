@@ -2,7 +2,6 @@
 
 POSTCommand::POSTCommand(MovieManager &manager) : manager(manager) {}
 
-// POST [userid] [movieid]...: creates a user with watched movies; 404 if the user exists
 void POSTCommand::execute(std::istringstream &input, std::ostream &output)
 {
     std::string userId;
@@ -18,7 +17,6 @@ void POSTCommand::execute(std::istringstream &input, std::ostream &output)
         output << "400 Bad Request";
         return;
     }
-    // addUser checks and inserts under one lock, so two concurrent POSTs cannot both win
     if (!manager.addUser(userId))
     {
         output << "404 Not Found";

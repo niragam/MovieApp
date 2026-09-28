@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # =============================================================================
-# start.sh - Stop all services and restart from scratch
 # =============================================================================
 
 set -e
@@ -44,8 +43,8 @@ echo ""
 echo "Stopping Docker containers..."
 cd "$PROJECT_DIR"
 
-# Force stop docker-compose services
-docker-compose down --remove-orphans 2>/dev/null || true
+# Force stop Docker Compose services
+docker compose down --remove-orphans 2>/dev/null || true
 
 # Force stop and remove containers by name pattern
 for container in mongo-netflix web-ser recserver; do
@@ -56,7 +55,6 @@ for container in mongo-netflix web-ser recserver; do
     fi
 done
 
-# Extra cleanup: stop any container using our published port
 for port in 3000; do
     CONTAINER_ID=$(docker ps -q --filter "publish=$port" 2>/dev/null || true)
     if [ -n "$CONTAINER_ID" ]; then
@@ -104,15 +102,13 @@ read -p "Do you want to remove all data (fresh database)? [y/N]: " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "   Removing Docker volumes (MongoDB and recommendation data)..."
-    # -v removes this project's named volumes, whatever the compose project is called
-    docker-compose down -v 2>/dev/null || true
+    docker compose down -v 2>/dev/null || true
     echo "   Data removed - fresh start!"
 fi
 
 echo ""
 
 # -----------------------------------------------------------------------------
-# Configuration: the API needs JWT_SECRET (docker-compose reads it from .env)
 # -----------------------------------------------------------------------------
 if [ ! -f "$PROJECT_DIR/.env" ]; then
     echo "No .env found - creating one with a random JWT_SECRET..."
@@ -127,18 +123,18 @@ echo ""
 # -----------------------------------------------------------------------------
 echo "Starting Docker services..."
 cd "$PROJECT_DIR"
-docker-compose up --build -d
+docker compose up --build -d
 
 echo "   Waiting for services to be ready..."
 sleep 8
 
 # Check if services are running
-if docker-compose ps | grep -q "Up"; then
+if docker compose ps | grep -q "Up"; then
     echo "   Backend services started successfully!"
-    docker-compose ps
+    docker compose ps
 else
     echo "   Error: Some services failed to start"
-    docker-compose logs --tail=30
+    docker compose logs --tail=30
     exit 1
 fi
 
@@ -187,7 +183,7 @@ echo "   API:       http://localhost:3000"
 echo "   MongoDB and RecServer are internal to the Docker network"
 echo ""
 echo "Useful commands:"
-echo "   docker-compose logs -f     # View backend logs"
+echo "   docker compose logs -f     # View backend logs"
 echo "   tail -f /tmp/vite.log      # View frontend logs"
 echo "   ./seed_database.sh         # Populate sample data"
 echo "===================================="

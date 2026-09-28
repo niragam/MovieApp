@@ -10,15 +10,12 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Only what the build needs
 COPY CMakeLists.txt ./
 COPY src/recServer ./src/recServer
 
-# Build the server (tests are built and run outside the image)
 RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF && \
     cmake --build build -j"$(nproc)"
 
-# User data is persisted here (a named volume in docker-compose.yml)
 RUN mkdir -p /app/data
 
 EXPOSE 8000

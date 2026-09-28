@@ -7,7 +7,6 @@ const validateObjectId = require('../middleware/validateObjectId');
 
 const validId = validateObjectId('Movie');
 
-// Public routes ('/search' with no query would otherwise fall through to '/:id')
 router.get('/search', movieController.rejectEmptySearch);
 router.get('/search/:query', asyncHandler(movieController.searchMovies));
 

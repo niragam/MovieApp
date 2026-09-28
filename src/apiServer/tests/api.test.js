@@ -22,7 +22,6 @@ beforeEach(async () => {
 afterEach(() => fake.close());
 
 describe('error handling and validation', () => {
-    // As in the assignment's example (GET /api/categories/foo -> 404 Category not found)
     test('invalid ids are 404 on every :id route', async () => {
         const cases = [
             request(app).get('/api/users/nope').set(U()),
@@ -101,7 +100,6 @@ describe('users', () => {
 });
 
 describe('categories', () => {
-    // Matches the assignment's curl examples
     test('create is 201 with Location and no body; list and get return {id, name, promoted}', async () => {
         const res = await newCategory('Action');
         expect(res.status).toBe(201);

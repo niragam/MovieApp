@@ -9,14 +9,12 @@ import type { Movie } from '../types';
 const SearchPage = () => {
     const [searchParams] = useSearchParams();
     const query = searchParams.get('q') || '';
-    // Results are stored with the query they answer; anything else is still loading
     const [fetched, setFetched] = useState<{ query: string; results: Movie[] } | null>(null);
     const loading = !!query && fetched?.query !== query;
     const results = query && fetched?.query === query ? fetched.results : [];
     const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
     const closeModal = useCallback(() => setSelectedMovie(null), []);
 
-    // Only the latest query's results are shown, even if responses arrive out of order
     useEffect(() => {
         if (!query) return;
         let cancelled = false;

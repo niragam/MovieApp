@@ -22,7 +22,6 @@ const start = async () => {
         console.log(`Server running on port ${port}`);
     });
 
-    // Don't block startup on the recommendation server; resync once it is reachable.
     syncInBackground();
 };
 

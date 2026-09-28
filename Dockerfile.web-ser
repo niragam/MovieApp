@@ -4,7 +4,6 @@ WORKDIR /app
 
 COPY package*.json ./
 
-# Reproducible, production-only install
 RUN npm ci --omit=dev
 
 COPY src/apiServer ./src/apiServer

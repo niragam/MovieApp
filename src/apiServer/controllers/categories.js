@@ -1,10 +1,8 @@
 const category = require('../models/categories');
 const movieModel = require('../models/movies');
 
-// API shape of a category (as in the assignment's examples)
 const toCategoryDto = c => ({ id: c._id, name: c.name, promoted: c.promoted });
 
-// Validates the writable fields. With `partial`, omitted fields are allowed (PATCH).
 const parseCategoryBody = ({ name, promoted }, { partial }) => {
     const fields = {};
     if (name !== undefined || !partial) {
@@ -37,7 +35,6 @@ const createCategory = async (req, res) => {
     if (await category.exists({ name: fields.name })) {
         return res.status(409).json({ error: 'Category already exists' });
     }
-    // A concurrent duplicate still hits the unique index -> 409 via the error handler
     const newCategory = await category.create(fields);
     res.status(201).location(`/api/categories/${newCategory._id}`).end();
 };
@@ -70,7 +67,6 @@ const deleteCategory = async (req, res) => {
     if (!deletedCategory) {
         return res.status(404).json({ error: 'Category not found' });
     }
-    // Don't leave dangling references in movies
     await movieModel.updateMany({ categories: deletedCategory._id }, { $pull: { categories: deletedCategory._id } });
     res.status(204).send();
 };

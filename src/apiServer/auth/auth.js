@@ -1,7 +1,5 @@
 const jwt = require('jsonwebtoken');
 
-// No fallback: a secret committed to the repository would let anyone mint admin tokens.
-// server.js refuses to start without JWT_SECRET.
 const getJwtSecret = () => {
     const secret = process.env.JWT_SECRET;
     if (!secret) {

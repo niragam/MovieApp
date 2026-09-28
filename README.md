@@ -67,14 +67,14 @@ A movie streaming and recommendation platform: a React frontend, a Node.js/Expre
 ### Quick start
 
 ```bash
-cp .env.example .env          # then set JWT_SECRET to a long random string
-docker-compose up --build     # MongoDB, API server and recommendation server
-./seed_database.sh            # in another terminal: sample users, categories, movies
-./populate_history.sh         # optional: random watch history for the sample users
+cp .env.example .env
+docker-compose up --build
+./seed_database.sh
+./populate_history.sh
 
 cd src/frontend
 npm install
-npm run dev                   # http://localhost:5173 (proxies /api to :3000)
+npm run dev
 ```
 
 Or run `./start.sh`, which does all of the above (it creates `.env` with a random secret if it is missing).
@@ -212,28 +212,28 @@ cd src/frontend && npx tsc --noEmit && npm run lint && npm run build
 ```
 MovieApp/
 ├── src/
-│   ├── apiServer/            # Node.js backend
-│   │   ├── app.js            # Express app (routes, error handling)
-│   │   ├── server.js         # Entry point: connects MongoDB, listens, resyncs recommendations
-│   │   ├── auth/             # JWT middleware
-│   │   ├── controllers/      # Route handlers
-│   │   ├── middleware/       # asyncHandler, validateObjectId, errorHandler
-│   │   ├── models/           # Mongoose schemas
-│   │   ├── routes/           # Routers
-│   │   ├── services/         # recClient (TCP), recSync, movieDto, validation
-│   │   ├── scripts/          # One-off data migrations
-│   │   └── tests/            # Jest tests
-│   ├── frontend/             # React application
-│   └── recServer/            # C++ recommendation server
-│       ├── commands/         # One class per protocol command
-│       ├── threadpool/       # Worker pool that owns client sockets
-│       ├── tests/            # GoogleTest suites
-│       ├── App.cpp           # Sockets, framing, dispatch
-│       ├── MovieManager.cpp  # Thread-safe data and the algorithm
+│   ├── apiServer/
+│   │   ├── app.js
+│   │   ├── server.js
+│   │   ├── auth/
+│   │   ├── controllers/
+│   │   ├── middleware/
+│   │   ├── models/
+│   │   ├── routes/
+│   │   ├── services/
+│   │   ├── scripts/
+│   │   └── tests/
+│   ├── frontend/
+│   └── recServer/
+│       ├── commands/
+│       ├── threadpool/
+│       ├── tests/
+│       ├── App.cpp
+│       ├── MovieManager.cpp
 │       └── main.cpp
 ├── docker-compose.yml
-├── Dockerfile.web-ser        # API image
-├── Dockerfile.recserver      # Recommendation server image
+├── Dockerfile.web-ser
+├── Dockerfile.recserver
 ├── .env.example
 ├── start.sh, seed_database.sh, populate_history.sh
 └── README.md

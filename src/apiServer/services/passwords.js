@@ -1,5 +1,3 @@
-// Password hashing with Node's built-in crypto (scrypt), so no extra library is needed.
-// Stored format: "scrypt$<salt hex>$<hash hex>".
 const crypto = require('crypto');
 const { promisify } = require('util');
 
@@ -19,7 +17,7 @@ const verifyPassword = async (password, stored) => {
     if (!saltHex || !hashHex) return false;
     const expected = Buffer.from(hashHex, 'hex');
     const actual = await scrypt(password, Buffer.from(saltHex, 'hex'), expected.length);
-    return crypto.timingSafeEqual(actual, expected); // constant-time comparison
+    return crypto.timingSafeEqual(actual, expected);
 };
 
 const isHashed = (stored) => typeof stored === 'string' && stored.startsWith(PREFIX);

@@ -13,11 +13,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const storedUser = getCurrentUser();
         return (token && storedUser) ? storedUser : null;
     });
-    // Session state comes from synchronous storage, so there is never a loading phase.
     const [loading] = useState(false);
 
-    // The API layer signals an expired/invalid token; drop the session so protected
-    // routes redirect to the login page.
     useEffect(() => {
         const handleForcedLogout = () => setUser(null);
         window.addEventListener(AUTH_LOGOUT_EVENT, handleForcedLogout);

@@ -2,7 +2,6 @@
 
 DELETECommand::DELETECommand(MovieManager &manager) : manager(manager) {}
 
-// DELETE [userid] [movieid]...: removes watched movies; 404 if the user or any movie is missing
 void DELETECommand::execute(std::istringstream &input, std::ostream &output)
 {
     std::string userId;
@@ -18,6 +17,5 @@ void DELETECommand::execute(std::istringstream &input, std::ostream &output)
         output << "400 Bad Request";
         return;
     }
-    // Checked and applied atomically inside the manager
     output << (manager.deleteMovies(userId, movieIds) ? "204 No Content" : "404 Not Found");
 }

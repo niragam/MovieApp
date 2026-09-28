@@ -26,12 +26,10 @@ app.use('/api/tokens', tokenRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/movies', movieRoutes);
 
-// Unknown API routes get a JSON 404, never the SPA or an HTML error page
 app.use('/api', (req, res) => {
     res.status(404).json({ error: 'Not found' });
 });
 
-// Serve the built frontend when it exists (production); in development Vite serves it.
 const distDir = path.join(__dirname, '../frontend/dist');
 const indexHtml = path.join(distDir, 'index.html');
 app.use(express.static(distDir));

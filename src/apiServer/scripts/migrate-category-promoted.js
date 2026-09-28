@@ -1,6 +1,3 @@
-// One-off migration: rename the category field isPromoted -> promoted (the name used by
-// the assignment's API examples).
-// Usage: MONGO_URI=mongodb://localhost:27017/netflix node src/apiServer/scripts/migrate-category-promoted.js
 require('dotenv').config();
 const mongoose = require('mongoose');
 

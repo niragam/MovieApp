@@ -21,15 +21,13 @@ private:
     MovieManager manager;  // Manages the movie-related data
     std::map<std::string, std::unique_ptr<ICommand>> commands;  // Stores available commands (e.g., POST, GET, etc.)
     std::string dataFile;  // Path to the data file where movie data is saved
-    int server_fd = -1;    // Listening socket
+    int server_fd = -1;
 
 public:
-    explicit App(std::string dataFile = "data/user_data.txt");  // Registers commands; dataFile is where user data is persisted
+    explicit App(std::string dataFile = "data/user_data.txt");
 
-    // Executes the named command; returns true if it may have changed stored data
     bool executeCommand(const std::string &name, std::istringstream &input, std::ostringstream &output);
 
-    // Executes one request line and returns the newline-terminated response
     std::string processLine(const std::string &line);
 
     // Handles the client communication by reading messages and sending responses

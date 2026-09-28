@@ -1,4 +1,3 @@
-// Shared test helpers: in-memory MongoDB, a scriptable fake recommendation server, and auth helpers.
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 process.env.RECSERVER_HOST = '127.0.0.1';
 process.env.RECSERVER_TIMEOUT_MS = process.env.RECSERVER_TIMEOUT_MS || '500';
@@ -26,8 +25,6 @@ const clearMongo = async () => {
     await Promise.all(collections.map(c => c.deleteMany({})));
 };
 
-// Fake recommendation server. `handler(line)` returns the reply line (without '\n'),
-// or null to never reply. `mode: 'split'` sends each reply in two TCP chunks.
 const startFakeRecServer = async (handler = () => '204 No Content', { mode = 'normal' } = {}) => {
     const received = [];
     const sockets = new Set();
@@ -68,8 +65,6 @@ const startFakeRecServer = async (handler = () => '204 No Content', { mode = 'no
     };
 };
 
-// Handler implementing the part-2 command semantics in memory: POST only for new users,
-// PATCH/DELETE/GET only for existing ones. GET replies with `recommend(user, movie)` ids.
 const recServerSimulator = (recommend = () => []) => {
     const users = new Map();
     const handler = line => {
@@ -98,7 +93,6 @@ const recServerSimulator = (recommend = () => []) => {
     return { handler, users };
 };
 
-// A port with nothing listening on it (connection refused).
 const pointRecServerAtClosedPort = async () => {
     const server = net.createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

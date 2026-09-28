@@ -52,7 +52,6 @@ const MovieManager = () => {
         fetchData();
     }, []);
 
-    // Every movie (not the personalised homepage sample), so all of them can be managed
     const fetchData = async () => {
         try {
             setLoading(true);

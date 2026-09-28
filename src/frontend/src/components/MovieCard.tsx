@@ -7,14 +7,12 @@ interface MovieCardProps {
     onClick?: () => void;
 }
 
-// Shown when a movie has no poster (or the poster fails to load)
 const PLACEHOLDER_POSTER = 'https://placehold.co/400x600/1a1a1a/e50914?text=Movie+Poster';
 
 const MovieCard = ({ movie, onClick }: MovieCardProps) => {
     const [isHovered, setIsHovered] = useState(false);
     const navigate = useNavigate();
 
-    // The player records the view, so every way of starting playback counts
     const handlePlayClick = (e: MouseEvent<HTMLButtonElement>) => {
         e.stopPropagation(); // Prevent triggering the card's onClick
         navigate(`/watch/${movie.id}`);

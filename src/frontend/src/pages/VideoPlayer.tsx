@@ -20,16 +20,13 @@ const VideoPlayer = () => {
     const videoContainerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const controlsTimeoutRef = useRef<number | null>(null);
-    // Mirrors isPlaying for timers, which would otherwise see a stale value
     const isPlayingRef = useRef(isPlaying);
-    // The movie id whose view was already recorded (StrictMode runs effects twice)
     const recordedIdRef = useRef<string | null>(null);
 
     useEffect(() => {
         isPlayingRef.current = isPlaying;
         if (videoRef.current) {
             if (isPlaying) {
-                // Browsers may block autoplay with sound; reflect that in the UI
                 videoRef.current.play().catch(() => setIsPlaying(false));
             } else {
                 videoRef.current.pause();
@@ -93,8 +90,6 @@ const VideoPlayer = () => {
         try {
             const data = await getMovie(id);
             setMovie(data);
-            // Opening the player is what counts as watching: record it once per movie.
-            // A failure only affects history/recommendations, never playback.
             if (recordedIdRef.current !== id) {
                 recordedIdRef.current = id;
                 watchMovie(id).catch(err => console.error('Failed to record the view:', err));

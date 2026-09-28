@@ -1,7 +1,3 @@
-// One-off migration: hash any passwords still stored in plaintext.
-// Hashed values start with "scrypt$" (see services/passwords.js); anything else is
-// treated as plaintext.
-// Usage: MONGO_URI=mongodb://localhost:27017/netflix node src/apiServer/scripts/hash-passwords.js
 require('dotenv').config();
 const mongoose = require('mongoose');
 const { hashPassword, isHashed } = require('../services/passwords');

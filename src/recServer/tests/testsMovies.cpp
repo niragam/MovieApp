@@ -22,7 +22,7 @@ class MovieRecommenderTest : public testing::Test
 {
 protected:
     MovieManager manager; // setting up a manager
-    const std::string testFile = "testsMovies_user_data.txt"; // local to the test working dir
+    const std::string testFile = "testsMovies_user_data.txt";
 
     void TearDown() override
     {
@@ -36,7 +36,6 @@ protected:
     }
 };
 
-// ---- Users and movies ----
 
 TEST_F(MovieRecommenderTest, AddUser_Success)
 {
@@ -49,7 +48,7 @@ TEST_F(MovieRecommenderTest, AddMovies_Success)
     manager.addUser("101");
     std::vector<std::string> movies = {"1", "2", "3"};
     EXPECT_TRUE(manager.addMovies("101", movies));
-    EXPECT_FALSE(manager.addMovies("102", movies)); // unknown user
+    EXPECT_FALSE(manager.addMovies("102", movies));
     EXPECT_TRUE(watched("101", "1"));
     EXPECT_TRUE(watched("101", "3"));
     EXPECT_FALSE(watched("101", "4"));
@@ -83,8 +82,8 @@ TEST_F(MovieRecommenderTest, DeleteMovies)
     EXPECT_TRUE(manager.deleteMovies("101", {"1", "2"}));
     EXPECT_FALSE(watched("101", "1"));
     EXPECT_TRUE(watched("101", "3"));
-    EXPECT_FALSE(manager.deleteMovies("999", {"1"})); // unknown user
-    EXPECT_FALSE(manager.deleteMovies("101", {"999"})); // not watched
+    EXPECT_FALSE(manager.deleteMovies("999", {"1"}));
+    EXPECT_FALSE(manager.deleteMovies("101", {"999"}));
 }
 
 TEST_F(MovieRecommenderTest, DeleteMovies_IsAllOrNothing)
@@ -92,10 +91,9 @@ TEST_F(MovieRecommenderTest, DeleteMovies_IsAllOrNothing)
     manager.addUser("101");
     manager.addMovies("101", {"1", "2"});
     EXPECT_FALSE(manager.deleteMovies("101", {"1", "missing"}));
-    EXPECT_TRUE(watched("101", "1")); // nothing removed
+    EXPECT_TRUE(watched("101", "1"));
 }
 
-// ---- Persistence ----
 
 TEST_F(MovieRecommenderTest, SaveData)
 {
@@ -108,7 +106,6 @@ TEST_F(MovieRecommenderTest, SaveData)
     std::string line;
     std::getline(file, line);
     EXPECT_EQ(line, "101 1 2");
-    // Written via a temp file that is renamed into place
     EXPECT_FALSE(std::ifstream(testFile + ".tmp").good());
 }
 
@@ -116,7 +113,7 @@ TEST_F(MovieRecommenderTest, LoadData)
 {
     std::ofstream file(testFile);
     file << "101 1 2\n";
-    file << "\n"; // blank lines are ignored
+    file << "\n";
     file << "102 3 4\n";
     file.close();
 
@@ -140,11 +137,7 @@ TEST_F(MovieRecommenderTest, Persistence_EndToEnd)
     EXPECT_TRUE(newManager.getUser("101")->hasWatched("2"));
 }
 
-// ---- Recommendation algorithm ----
 
-// Hand-worked example. U={A,B,C}; similarities: V1=2, V2=1, V3=1, V4=3 (didn't watch M),
-// V5=0, V6=1. Scores: X=2+1=3, Y=1+1=2, P=1, Z=1 (P before Z by id). Q is excluded
-// because V4 did not watch M; W because V5 has similarity 0.
 TEST_F(MovieRecommenderTest, Recommend_HandWorkedExample)
 {
     manager.addUserMovies("U", {"A", "B", "C"});
@@ -158,7 +151,6 @@ TEST_F(MovieRecommenderTest, Recommend_HandWorkedExample)
     EXPECT_EQ(manager.recommendMovies("U", "M"), expected);
 }
 
-// Pins an exact 10-item order that includes several ties (106/111, 110/112/113, 107..114)
 TEST_F(MovieRecommenderTest, Recommend_ExactOrderWithTies)
 {
     manager.addUserMovies("1", {"100", "101", "102", "103"});
@@ -178,12 +170,11 @@ TEST_F(MovieRecommenderTest, Recommend_ExactOrderWithTies)
 
 TEST_F(MovieRecommenderTest, Recommend_CapsAtTenWithIdTieBreak)
 {
-    // One similar user who watched M and 15 other movies: all tie on score 1
     manager.addUserMovies("U", {"shared"});
     std::vector<std::string> theirs = {"shared", "M"};
     for (int i = 0; i < 15; ++i)
     {
-        theirs.push_back("m" + std::to_string(10 + i)); // m10..m24, same length ids
+        theirs.push_back("m" + std::to_string(10 + i));
     }
     manager.addUserMovies("V", theirs);
     auto result = manager.recommendMovies("U", "M");
@@ -200,8 +191,6 @@ TEST_F(MovieRecommenderTest, Recommend_ExcludesWatchedAndReferenceMovie)
     EXPECT_EQ(manager.recommendMovies("U", "M"), expected);
 }
 
-// Chosen behaviour: users with similarity 0 are not candidates (they add 0 anyway), so a
-// user sharing nothing with anyone who watched M gets no recommendations.
 TEST_F(MovieRecommenderTest, Recommend_ZeroSimilarityGivesNothing)
 {
     manager.addUserMovies("U", {"x"});
@@ -226,7 +215,6 @@ TEST_F(MovieRecommenderTest, Recommend_AllMoviesWatched)
     EXPECT_TRUE(manager.recommendMovies("101", "102").empty());
 }
 
-// A user whose id is "0" is a normal user (there is no sentinel id any more)
 TEST_F(MovieRecommenderTest, UserIdZeroIsOrdinary)
 {
     manager.addUserMovies("0", {"a"});
@@ -235,7 +223,6 @@ TEST_F(MovieRecommenderTest, UserIdZeroIsOrdinary)
     EXPECT_EQ(manager.recommendMovies("0", "M"), expected);
 }
 
-// ---- Concurrency (run under -DSANITIZE=thread to detect races) ----
 
 TEST_F(MovieRecommenderTest, ConcurrentReadsWritesAndSaves)
 {
@@ -270,7 +257,6 @@ TEST_F(MovieRecommenderTest, ConcurrentReadsWritesAndSaves)
     EXPECT_EQ(reloaded.getUser("u0")->getMovies(), manager.getUser("u0")->getMovies());
 }
 
-// ---- App argument handling ----
 
 TEST_F(MovieRecommenderTest, invalidInput)
 {

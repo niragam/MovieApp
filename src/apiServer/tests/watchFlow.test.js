@@ -45,7 +45,6 @@ describe('watch and recommend through the recommendation server', () => {
         expect(watch.status).toBe(502);
         expect(watch.body.error).toMatch(/unavailable/);
 
-        // MongoDB is the source of truth and was still updated
         const stored = await mongoose.connection.db.collection('users').findOne({ username: 'alice' });
         expect(stored.watchHistory.map(entry => String(entry.movieId))).toEqual([movieId]);
 
@@ -135,7 +134,7 @@ describe('against a recommendation server that follows the part-2 rules', () => 
         await h.pointRecServerAtClosedPort();
         expect((await request(app).delete(`/api/movies/${movies[1]}`).set(h.auth(admin.token))).status).toBe(204);
         expect(await pending()).toHaveLength(1);
-        expect(sim.users.get(user.userId).has(movies[1])).toBe(true); // stale watch
+        expect(sim.users.get(user.userId).has(movies[1])).toBe(true);
 
         process.env.RECSERVER_PORT = port;
         const { syncAllHistories } = require('../services/recSync');
@@ -160,7 +159,7 @@ describe('against a recommendation server that follows the part-2 rules', () => 
 
     test('resync re-creates users the server lost', async () => {
         await request(app).post(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
-        sim.users.clear(); // server restarted with no data
+        sim.users.clear();
         const { syncAllHistories } = require('../services/recSync');
         await syncAllHistories();
         expect([...sim.users.get(user.userId)]).toEqual([movies[0]]);

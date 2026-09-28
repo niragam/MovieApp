@@ -31,7 +31,6 @@ int App::run(int argc, char **argv)
     {
         return 1;  // Return error if not
     }
-    // A client that disconnects mid-reply must not kill the server (send uses MSG_NOSIGNAL too).
     std::signal(SIGPIPE, SIG_IGN);
     try
     {
@@ -81,14 +80,11 @@ int App::initServer(int port, struct sockaddr_in &address)
     return 0;  // Success
 }
 
-// Idle clients are disconnected after this long, so they cannot pin a worker forever.
 static const int CLIENT_RECEIVE_TIMEOUT_SECONDS = 30;
 
-// Accepts client connections and hands each one to the thread pool
 void App::acceptMultipleClients(struct sockaddr_in &address)
 {
     socklen_t addrlen = sizeof(address);
-    // One worker per hardware thread (hardware_concurrency() may report 0)
     size_t workers = std::max(1u, std::thread::hardware_concurrency());
     ThreadPool pool(workers, [this](int client_socket) { handleClient(client_socket); });
     while (true)
@@ -98,21 +94,18 @@ void App::acceptMultipleClients(struct sockaddr_in &address)
         {
             if (errno == EMFILE || errno == ENFILE)
             {
-                // Out of descriptors: back off instead of spinning at 100% CPU
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
             continue;
         }
         timeval timeout{CLIENT_RECEIVE_TIMEOUT_SECONDS, 0};
         setsockopt(new_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-        pool.addTask(new_socket);  // The pool worker owns the socket from here on
+        pool.addTask(new_socket);
     }
 }
 
-// Maximum accepted request line length; longer lines are rejected and the connection closed.
 static const size_t MAX_LINE_LENGTH = 64 * 1024;
 
-// Writes the whole buffer, retrying on partial writes. Returns false if the peer is gone.
 static bool sendAll(int socket, const std::string &data)
 {
     size_t sent = 0;
@@ -132,11 +125,8 @@ static bool sendAll(int socket, const std::string &data)
     return true;
 }
 
-// Executes one request line and returns the newline-terminated response.
 std::string App::processLine(const std::string &line)
 {
-    // Fields are separated by spaces only (not tabs or other whitespace), so any other
-    // whitespace makes the command invalid.
     bool onlySpaces = std::none_of(line.begin(), line.end(), [](unsigned char c)
                                    { return c != ' ' && std::isspace(c); });
     if (!onlySpaces)
@@ -150,16 +140,11 @@ std::string App::processLine(const std::string &line)
     std::ostringstream output;
     if (executeCommand(command, input, output))
     {
-        manager.saveData(dataFile);  // Persist only after commands that can change data
+        manager.saveData(dataFile);
     }
     return output.str() + "\n";
 }
 
-// Protocol: every request is one line terminated by '\n' (a trailing '\r' is ignored),
-// and every response ends with '\n'. Most responses are a single status line; a successful
-// GET is "200 Ok", an empty line, then the recommendations line. TCP is a byte stream, so
-// bytes are buffered until complete lines are available; one read may carry several
-// requests, or only part of one.
 void App::handleClient(int client_socket)
 {
     std::string buffer;
@@ -190,13 +175,12 @@ void App::handleClient(int client_socket)
         {
             continue;
         }
-        if (bytes_read <= 0)  // EOF, error or receive timeout: end the session
+        if (bytes_read <= 0)
         {
             return;
         }
         buffer.append(chunk, static_cast<size_t>(bytes_read));
     }
-    // The socket is closed by the thread pool worker that owns it, not here.
 }
 
 bool App::executeCommand(const std::string &name, std::istringstream &input, std::ostringstream &output)
@@ -204,7 +188,7 @@ bool App::executeCommand(const std::string &name, std::istringstream &input, std
     auto it = commands.find(name);
     if (it == commands.end())
     {
-        output << "400 Bad Request";  // Unknown command
+        output << "400 Bad Request";
         return false;
     }
     it->second->execute(input, output);

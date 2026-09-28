@@ -27,7 +27,6 @@ const UserSchema = new Schema({
         type: Date,
         default: Date.now
     },
-    // Oldest first: re-watching a movie moves it to the end with a fresh timestamp.
     watchHistory: {
         type: [new Schema({
             movieId: { type: Schema.Types.ObjectId, ref: 'Movie', required: true },

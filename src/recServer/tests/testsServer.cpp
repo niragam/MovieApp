@@ -1,4 +1,3 @@
-// Network-level tests: run a real App on a local port and talk to it over TCP.
 #include "gtest/gtest.h"
 #include "App.h"
 
@@ -20,7 +19,6 @@ namespace
 {
 const std::string serverDataFile = "testsServer_user_data.txt";
 
-// Starts one App for the whole test binary (App::run never returns).
 int serverPort()
 {
     static int port = []
@@ -30,8 +28,6 @@ int serverPort()
         static std::string portArg = std::to_string(chosen);
         std::thread([]
                     {
-                        // Intentionally leaked: the server threads outlive main(), so the App
-                        // must never be destroyed by static destructors at exit.
                         App *app = new App(serverDataFile);
                         static char prog[] = "movieApp";
                         char *argv[] = {prog, portArg.data(), nullptr};
@@ -72,7 +68,6 @@ void sendAllBytes(int fd, const std::string &data)
     }
 }
 
-// Reads until `lines` newline-terminated replies have arrived (or timeout/EOF).
 std::string readLines(int fd, int lines)
 {
     std::string data;
@@ -86,10 +81,8 @@ std::string readLines(int fd, int lines)
     }
     return data;
 }
-} // namespace
+}
 
-// Regression test for the double close(): with fd reuse, a second close() on a
-// recycled descriptor dropped other clients' connections under load.
 TEST(ServerTest, ManyConcurrentClientsAllGetAResponse)
 {
     int fd = connectToServer();
@@ -120,7 +113,6 @@ TEST(ServerTest, ManyConcurrentClientsAllGetAResponse)
     EXPECT_EQ(answered.load(), rounds * clients);
 }
 
-// ---- Framing tests: drive App::handleClient directly over a socketpair ----
 
 class FramingTest : public testing::Test
 {
@@ -142,13 +134,12 @@ protected:
 
     void TearDown() override
     {
-        shutdown(fds[0], SHUT_WR); // EOF ends the session
+        shutdown(fds[0], SHUT_WR);
         serverThread.join();
         close(fds[0]);
         std::remove(dataFile.c_str());
     }
 
-    // Reads until exactly `expected.size()` bytes arrived (or timeout/EOF) and returns them
     std::string readBytes(size_t count)
     {
         std::string data;
@@ -163,7 +154,6 @@ protected:
         return data;
     }
 
-    // Sends requests and checks the exact reply bytes
     void expectReplies(const std::string &requests, const std::string &expected)
     {
         sendAllBytes(fds[0], requests);
@@ -175,7 +165,6 @@ TEST_F(FramingTest, CoalescedRequestsAreHandledSeparately)
 {
     expectReplies("POST u1 m1\nPATCH u1 m2\nGET u1 m1\n",
                   "201 Created\n204 No Content\n200 Ok\n\n\n");
-    // No protocol words leaked into the user's history
     std::ifstream file(dataFile);
     std::string line;
     std::getline(file, line);
@@ -189,7 +178,6 @@ TEST_F(FramingTest, RequestSplitAcrossWritesIsReassembled)
     expectReplies("m1 m2\r\n", "201 Created\n");
 }
 
-// Exact output from the assignment: GET is "200 Ok", two newlines, then the ids
 TEST_F(FramingTest, GetReplyFormat)
 {
     expectReplies("POST a x y\nPOST b x z w\nGET a x\n",
@@ -212,7 +200,6 @@ TEST_F(FramingTest, UnknownAndMalformedCommandsAreRejected)
                   "400 Bad Request\n400 Bad Request\n400 Bad Request\n400 Bad Request\n400 Bad Request\n");
 }
 
-// Fields are separated by spaces only; any other whitespace makes the command invalid
 TEST_F(FramingTest, TabsAreNotSeparators)
 {
     expectReplies("POST\tu1 m1\nPOST u1\tm1\nhelp\t\nPOST  u1   m1  \n",
@@ -230,5 +217,5 @@ TEST_F(FramingTest, OverlongLineIsRejectedAndConnectionClosed)
     std::string huge(70 * 1024, 'a');
     expectReplies(huge, "400 Bad Request\n");
     char c;
-    EXPECT_LE(recv(fds[0], &c, 1, 0), 0); // server closed the session (EOF or reset)
+    EXPECT_LE(recv(fds[0], &c, 1, 0), 0);
 }

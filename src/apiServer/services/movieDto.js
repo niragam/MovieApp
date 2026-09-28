@@ -1,4 +1,3 @@
-// The single shape every movie endpoint returns. Expects `categories` populated with names.
 const toMovieDto = movie => ({
     id: movie._id,
     title: movie.title,

@@ -3,7 +3,6 @@ import type { User, LoginResponse, Movie, MovieInput, Category, HomeRow } from '
 
 const API_BASE = '/api';
 
-// Fired when the server rejects our token (expired or invalid); AuthContext listens for it.
 export const AUTH_LOGOUT_EVENT = 'auth:logout';
 
 // Helper to get auth headers
@@ -23,13 +22,11 @@ const apiRequest = async <T = unknown>(endpoint: string, options: RequestInit = 
         },
     });
 
-    // A 401 anywhere except the login call means the session is no longer valid
     if (response.status === 401 && endpoint !== '/tokens') {
         logout();
         window.dispatchEvent(new Event(AUTH_LOGOUT_EVENT));
     }
 
-    // Handle non-JSON responses (e.g. 204 No Content)
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
         if (!response.ok) {
@@ -97,12 +94,10 @@ export const getToken = (): string | null => {
 
 // ============ MOVIES ============
 
-// Homepage rows: promoted categories plus the user's watch history
 export const getMovies = async (): Promise<HomeRow[]> => {
     return apiRequest<HomeRow[]>('/movies');
 };
 
-// Every movie (admin only)
 export const getAllMovies = async (): Promise<Movie[]> => {
     return apiRequest<Movie[]>('/movies/all');
 };
@@ -115,14 +110,12 @@ export const searchMovies = async (query: string): Promise<Movie[]> => {
     return apiRequest<Movie[]>(`/movies/search/${encodeURIComponent(query)}`);
 };
 
-// Records that the current user watched this movie
 export const watchMovie = async (id: string): Promise<{ success: boolean }> => {
     return apiRequest<{ success: boolean }>(`/movies/${id}/recommend`, {
         method: 'POST',
     });
 };
 
-// Up to 10 recommended movies for the current user, based on this movie
 export const getRecommendations = async (id: string): Promise<Movie[]> => {
     return apiRequest<Movie[]>(`/movies/${id}/recommend`);
 };

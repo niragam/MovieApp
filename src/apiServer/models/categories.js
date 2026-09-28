@@ -9,7 +9,6 @@ const CategorySchema = new Schema({
         minlength: 1,
         unique: true
     },
-    // Promoted categories appear as rows on the homepage.
     promoted: {
         type: Boolean,
         default: false

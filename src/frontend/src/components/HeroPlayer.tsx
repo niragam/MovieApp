@@ -35,7 +35,6 @@ const HeroPlayer = ({ movie, onPlayClick, onInfoClick }: HeroPlayerProps) => {
 
     return (
         <div className="relative h-[70vh] md:h-[85vh] overflow-hidden">
-            {/* Backdrop artwork, or a gradient when the movie has none */}
             <div className={`absolute inset-0 bg-gradient-to-br ${pickGradient(movie.title, GRADIENTS)} transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
                 {movie.backdropUrl && (
                     <img src={movie.backdropUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />

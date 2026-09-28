@@ -5,7 +5,6 @@ import MovieCard from './MovieCard';
 import type { Movie } from '../types';
 import { pickGradient } from '../utils/gradient';
 
-// Parents key the modal by movie id, so a new selection remounts it
 interface MovieDetailsModalProps {
     movie: Movie;
     onClose: () => void;
@@ -20,9 +19,7 @@ const GRADIENTS = [
 ] as const;
 
 const MovieDetailsModal = ({ movie, onClose }: MovieDetailsModalProps) => {
-    // The modal can move to a recommended movie, so it tracks its own current movie
     const [current, setCurrent] = useState<Movie>(movie);
-    // Recommendations are stored with the movie id they belong to; others are loading
     const [recs, setRecs] = useState<{ id: string; movies: Movie[] } | null>(null);
     const modalRef = useRef<HTMLDivElement>(null);
     const onCloseRef = useRef(onClose);
@@ -35,8 +32,6 @@ const MovieDetailsModal = ({ movie, onClose }: MovieDetailsModalProps) => {
         onCloseRef.current = onClose;
     }, [onClose]);
 
-    // Load full details (categories, year, artwork) and recommendations for the current
-    // movie. Responses for a movie the user has already moved away from are ignored.
     useEffect(() => {
         let cancelled = false;
 
@@ -66,7 +61,6 @@ const MovieDetailsModal = ({ movie, onClose }: MovieDetailsModalProps) => {
         }
     };
 
-    // The player records the view when playback starts
     const handleWatch = () => {
         navigate(`/watch/${currentId}`);
     };
@@ -96,7 +90,6 @@ const MovieDetailsModal = ({ movie, onClose }: MovieDetailsModalProps) => {
                     </svg>
                 </button>
 
-                {/* Backdrop (falls back to a gradient when the movie has no artwork) */}
                 <div className={`relative h-64 md:h-80 bg-gradient-to-br ${pickGradient(current.title, GRADIENTS)} overflow-hidden`}>
                     {(current.backdropUrl || current.posterUrl) && (
                         <img

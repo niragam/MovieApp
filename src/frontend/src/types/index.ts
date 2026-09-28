@@ -1,4 +1,3 @@
-// Shapes returned by the API. Component prop types live next to their components.
 
 // ============ USER TYPES ============
 
@@ -29,7 +28,6 @@ export interface Movie {
     videoUrl?: string | null;
 }
 
-// Fields accepted when creating or replacing a movie (categories by name)
 export interface MovieInput {
     title: string;
     categories: string[];
@@ -41,7 +39,6 @@ export interface MovieInput {
     videoUrl?: string;
 }
 
-// One row of the homepage (GET /api/movies)
 export interface HomeRow {
     category: string;
     movies: Movie[];

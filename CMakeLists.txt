@@ -6,14 +6,12 @@ project(MovieRecommendations)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-# Optional sanitizer build: -DSANITIZE=thread or -DSANITIZE=address
 set(SANITIZE "" CACHE STRING "Sanitizer to enable (thread, address)")
 if(SANITIZE)
   add_compile_options(-fsanitize=${SANITIZE} -g -O1 -fno-omit-frame-pointer)
   add_link_options(-fsanitize=${SANITIZE})
 endif()
 
-# Tests need GoogleTest (downloaded at configure time); the Docker image turns them off.
 option(BUILD_TESTS "Build the gtest test executables" ON)
 
 # Include directories

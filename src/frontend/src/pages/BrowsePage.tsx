@@ -38,7 +38,6 @@ const BrowsePage = () => {
 
     const closeModal = useCallback(() => setSelectedMovie(null), []);
 
-    // Featured movie: a random pick from the promoted rows, chosen once per load
     const featured = useMemo(() => {
         const candidates = categories
             .filter(row => row.category !== HISTORY_ROW)

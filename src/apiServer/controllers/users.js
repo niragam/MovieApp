@@ -39,8 +39,6 @@ const createUser = async (req, res) => {
         return res.status(409).json({ error: 'Username already exists' });
     }
 
-    // A concurrent duplicate registration still hits the unique index -> 409 via the error handler.
-    // No recommendation-server call here: it creates users on their first watch.
     const user = await User.create({
         username,
         password: await hashPassword(password),
