@@ -1,7 +1,0 @@
-FROM ubuntu:22.04
-
-RUN apt-get update && apt-get install -y nodejs npm curl bash
-
-WORKDIR /app
-
-CMD ["/bin/bash"]
