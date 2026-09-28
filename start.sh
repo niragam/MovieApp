@@ -8,6 +8,12 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FRONTEND_DIR="$PROJECT_DIR/src/frontend"
 
+if ! docker info >/dev/null 2>&1; then
+    echo "Cannot access the Docker daemon. Check that Docker is running and that your user can access /var/run/docker.sock." >&2
+    echo "Socket: $(stat -c '%A %U:%G %n' /var/run/docker.sock 2>/dev/null || echo '/var/run/docker.sock unavailable')" >&2
+    exit 1
+fi
+
 echo "MovieApp Service Restart Script"
 echo "===================================="
 echo ""
