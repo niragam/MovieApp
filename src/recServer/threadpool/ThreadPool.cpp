@@ -45,10 +45,17 @@ void ThreadPool::workerFunction() {
             tasks.pop();
         }
 
-        // Process the client outside the critical section
-        clientHandler(clientSocket);
+        // Process the client outside the critical section. An exception escaping a
+        // worker thread would call std::terminate and take the whole server down.
+        try {
+            clientHandler(clientSocket);
+        } catch (const std::exception &e) {
+            std::cerr << "Client handler failed: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "Client handler failed with an unknown exception" << std::endl;
+        }
 
-        // Close the client socket after processing
+        // This worker owns the socket: close it exactly once, here
         close(clientSocket);
     }
 }

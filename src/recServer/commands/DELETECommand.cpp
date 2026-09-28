@@ -2,50 +2,22 @@
 
 DELETECommand::DELETECommand(MovieManager &manager) : manager(manager) {}
 
-// Function to add a user and their watched movies
+// DELETE [userid] [movieid]...: removes watched movies; 404 if the user or any movie is missing
 void DELETECommand::execute(std::istringstream &input, std::ostream &output)
 {
     std::string userId;
-    input >> userId; // Read user ID from input
-    try
+    std::vector<std::string> movieIds;
+    std::string movieId;
+    input >> userId;
+    while (input >> movieId)
     {
-        std::vector<std::string> movieIds;
-        std::string movieId;
-        while (input >> movieId) // Read movie IDs from input
-        {
-            movieIds.push_back(movieId);                     // Add movie ID to the list
-        }
-        if (movieIds.empty())
-        {
-            output << "400 Bad Request";
-            return;
-        }
-
-        User user = manager.getUser(userId);
-        if (user.getUserId() == "0")
-        {
-            output << "404 Not Found";
-            return;
-        }
-        for (const auto &movie : movieIds)
-        {
-            if (!user.hasWatched(movie))
-            {
-                output << "404 Not Found";
-                return;
-            }
-        }
-        output << "204 No Content";
-        manager.deleteMovies(userId, movieIds); // Delete movies from the user
+        movieIds.push_back(movieId);
     }
-    catch (const std::invalid_argument &e)
+    if (movieIds.empty())
     {
         output << "400 Bad Request";
-        return; // Ignore invalid input that cannot be converted
+        return;
     }
-    catch (const std::out_of_range &e)
-    {
-        output << "400 Bad Request";
-        return; // Ignore input values that are out of range
-    }
+    // Checked and applied atomically inside the manager
+    output << (manager.deleteMovies(userId, movieIds) ? "204 No Content" : "404 Not Found");
 }

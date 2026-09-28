@@ -1,56 +1,21 @@
 #include "GETCommand.h"
-#include <iostream>
 
 GETCommand::GETCommand(MovieManager &manager) : manager(manager) {}
 
-// Function to recommend movies for a user based on a reference movie
+// GET [userid] [movieid]: "200 Ok" plus "\t<id1> <id2> ..." when there are recommendations
 void GETCommand::execute(std::istringstream &input, std::ostream &output)
 {
-    std::string userId, referenceMovieId, check;
-    input >> userId;
-    if (input >> referenceMovieId)
+    std::string userId, referenceMovieId, extra;
+    if (!(input >> userId >> referenceMovieId) || (input >> extra))
     {
-        if (input >> check) // if there is more than 2 arguments
-        {
-            output << "400 Bad Request";
-            return; // Ignore invalid input that cannot be converted
-        }
-    }
-    else
-    {
-        output << "400 Bad Request";
-        return; // Ignore invalid input that cannot be converted
+        output << "400 Bad Request"; // exactly two arguments are required
+        return;
     }
 
-    try
+    std::vector<std::string> recommendations = manager.recommendMovies(userId, referenceMovieId);
+    output << "200 Ok";
+    for (size_t i = 0; i < recommendations.size(); ++i)
     {
-        std::vector<std::string> recommendations = manager.recommendMovies(userId, referenceMovieId); // Get recommendations
-        if (recommendations.empty())
-        {
-            output << "200 Ok"; // No recommendations
-            return;
-        }
-
-        // Response is a single line: "200 Ok\t<id1> <id2> ..."
-        output << "200 Ok\t";
-        for (size_t i = 0; i < recommendations.size(); ++i)
-        {
-            output << (i ? " " : "") << recommendations[i];
-        }
-    }
-    catch (const std::invalid_argument &e)
-    {
-        output << "400 Bad Request";
-        return; // Ignore invalid input that cannot be converted
-    }
-    catch (const std::out_of_range &e)
-    {
-        output << "400 Bad Request";
-        return; // Ignore input values that are out of range
-    }
-    catch (const std::runtime_error &e)
-    {
-        output << "400 Bad Request";
-        return; // Ignore runtime errors, such as user not found
+        output << (i ? " " : "\t") << recommendations[i];
     }
 }

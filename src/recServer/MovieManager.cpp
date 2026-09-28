@@ -1,75 +1,63 @@
 #include "MovieManager.h"
 
-#include <unordered_map>
-#include <fstream>
-#include <sstream>
-#include <iostream>
-#include <map>
-#include <filesystem>
 #include <algorithm>
+#include <cstdio>
+#include <fstream>
+#include <mutex>
+#include <sstream>
+#include <unordered_map>
 
 #define MAX_RECOMMENDATIONS 10
+
+User *MovieManager::findUser(const std::string &userId)
+{
+    auto it = std::find_if(users.begin(), users.end(),
+                           [&userId](const User &user)
+                           { return user.getUserId() == userId; });
+    return it == users.end() ? nullptr : &*it;
+}
+
+const User *MovieManager::findUser(const std::string &userId) const
+{
+    return const_cast<MovieManager *>(this)->findUser(userId);
+}
 
 // Adds a new user to the system
 bool MovieManager::addUser(const std::string &userId)
 {
     std::unique_lock<std::shared_mutex> lock(managerMutex);
-    // Search for the user by ID
-    auto reqUser = std::find_if(users.begin(), users.end(),
-                                [userId](const User &user)
-                                { return user.getUserId() == userId; });
-
-    // If the user already exists, return false
-    if (reqUser != users.end())
+    if (findUser(userId))
     {
         return false;
     }
-
-    // Add the user to the list of users
     users.push_back(User(userId));
     return true;
 }
 
-// Retrieves a user by their ID
-User MovieManager::getUser(const std::string &userId)
+// Retrieves a copy of the user, if it exists
+std::optional<User> MovieManager::getUser(const std::string &userId) const
 {
     std::shared_lock<std::shared_mutex> lock(managerMutex);
-    auto reqUser = std::find_if(users.begin(), users.end(),
-                                [userId](const User &user)
-                                { return user.getUserId() == userId; });
-
-    // If the user is found, return them
-    if (reqUser != users.end())
+    const User *user = findUser(userId);
+    if (!user)
     {
-        return *reqUser;
+        return std::nullopt;
     }
-    User user = User("0"); // return error
-    return user;
+    return *user;
 }
 
 // Adds movies to the specified user's list
 bool MovieManager::addMovies(const std::string &userId, const std::vector<std::string> &movieIds)
 {
     std::unique_lock<std::shared_mutex> lock(managerMutex);
-
-    // Search for the user by ID
-    auto reqUser = std::find_if(users.begin(), users.end(),
-                                [userId](const User &user)
-                                { return user.getUserId() == userId; });
-
-    // If the user is not found, return false
-    if (reqUser == users.end())
+    User *user = findUser(userId);
+    if (!user)
     {
         return false;
     }
-
-    // Add each movie to the user's list if not already present
     for (const auto &movieId : movieIds)
     {
-        if (!reqUser->hasWatched(movieId))
-        {
-            reqUser->addMovie(movieId);
-        }
+        user->addMovie(movieId); // a set: duplicates are ignored
     }
     return true;
 }
@@ -79,74 +67,73 @@ bool MovieManager::addMovies(const std::string &userId, const std::vector<std::s
 void MovieManager::addUserMovies(const std::string &userId, const std::vector<std::string> &movieIds)
 {
     std::unique_lock<std::shared_mutex> lock(managerMutex);
-    auto reqUser = std::find_if(users.begin(), users.end(),
-                                [&userId](const User &user)
-                                { return user.getUserId() == userId; });
-    if (reqUser == users.end())
+    User *user = findUser(userId);
+    if (!user)
     {
         users.push_back(User(userId));
-        reqUser = users.end() - 1;
+        user = &users.back();
     }
     for (const auto &movieId : movieIds)
     {
-        reqUser->addMovie(movieId);
+        user->addMovie(movieId);
     }
 }
 
-// Delete movies to the specified user's list
+// Deletes movies from the user's list. All-or-nothing: if the user is missing or has not
+// watched one of the movies, nothing changes.
 bool MovieManager::deleteMovies(const std::string &userId, const std::vector<std::string> &movieIds)
 {
     std::unique_lock<std::shared_mutex> lock(managerMutex);
-
-    // Search for the user by ID
-    auto reqUser = std::find_if(users.begin(), users.end(),
-                                [userId](const User &user)
-                                { return user.getUserId() == userId; });
-
-    // If the user is not found, return false
-    if (reqUser == users.end())
+    User *user = findUser(userId);
+    if (!user)
     {
         return false;
     }
-
-    // delete each movie to the user's list if not already present
     for (const auto &movieId : movieIds)
     {
-        if (reqUser->hasWatched(movieId))
-        {
-            reqUser->deleteMovie(movieId);
-        }
-        else
+        if (!user->hasWatched(movieId))
         {
             return false;
         }
     }
+    for (const auto &movieId : movieIds)
+    {
+        user->deleteMovie(movieId);
+    }
     return true;
 }
 
-// Saves user data to a file
+// Saves user data by writing a temporary file and renaming it over the target, so a
+// crash mid-write can never leave a truncated data file behind.
 void MovieManager::saveData(const std::string &filename) const
 {
-    std::unique_lock<std::shared_mutex> lock(managerMutex);
-
-    std::ofstream file(filename);
-    if (!file)
+    // One writer of the temp file at a time; readers of the data may continue meanwhile.
+    std::lock_guard<std::mutex> saveLock(saveMutex);
+    std::shared_lock<std::shared_mutex> lock(managerMutex);
+    const std::string tmpName = filename + ".tmp";
     {
-        return;
-    }
-
-    // Write each user's data (ID and movie list) to the file
-    for (const auto &user : users)
-    {
-        file << user.getUserId();
-        for (const auto &movieId : user.getMovies())
+        std::ofstream file(tmpName, std::ios::trunc);
+        if (!file)
         {
-            file << " " << movieId;
+            return;
         }
-        file << "\n";
+        for (const auto &user : users)
+        {
+            file << user.getUserId();
+            for (const auto &movieId : user.getMovies())
+            {
+                file << " " << movieId;
+            }
+            file << "\n";
+        }
+        file.flush();
+        if (!file)
+        {
+            std::remove(tmpName.c_str());
+            return;
+        }
     }
-
-    file.close();
+    std::rename(tmpName.c_str(), filename.c_str());
 }
 
 // Loads user data from a file
@@ -159,120 +146,86 @@ void MovieManager::loadData(const std::string &filename)
     }
 
     std::string line;
-
-    // Read each line from the file
     while (std::getline(file, line))
     {
         std::istringstream lineStream(line);
         std::string userId;
-        lineStream >> userId;
-
-        addUser(userId);
-
-        // Read and add the user's movies
+        if (!(lineStream >> userId))
+        {
+            continue; // skip blank lines
+        }
         std::vector<std::string> movieIds;
         std::string movieId;
         while (lineStream >> movieId)
         {
             movieIds.push_back(movieId);
         }
-        addMovies(userId, movieIds);
+        addUserMovies(userId, movieIds);
     }
-
-    file.close();
 }
 
-// Helper function to count the number of common movies between two users
-int MovieManager::countCommonMovies(User user1, User user2)
+// Number of movies both users watched (iterates the smaller set, looks up in the larger)
+int MovieManager::countCommonMovies(const User &a, const User &b)
 {
-    std::shared_lock<std::shared_mutex> lock(managerMutex);
-    int commonMovies = 0;
-    for (std::string movieOfUser1 : user1.getMovies())
+    const auto &smaller = a.getMovies().size() <= b.getMovies().size() ? a.getMovies() : b.getMovies();
+    const User &larger = &smaller == &a.getMovies() ? b : a;
+    int common = 0;
+    for (const auto &movie : smaller)
     {
-        for (std::string movie : user2.getMovies())
+        if (larger.hasWatched(movie))
         {
-            if (movieOfUser1 == movie)
-            {
-                commonMovies++;
-            }
+            common++;
         }
     }
-    return commonMovies;
+    return common;
 }
 
-// Recommends movies to a user based on a reference movie ID
-std::vector<std::string> MovieManager::recommendMovies(std::string userid, std::string movieId)
+// Recommends movies to a user based on a reference movie ID (see header for the rules)
+std::vector<std::string> MovieManager::recommendMovies(const std::string &userId, const std::string &movieId) const
 {
     std::shared_lock<std::shared_mutex> lock(managerMutex);
-    // Check if the user exists
-    std::vector<std::string> recommendations = {};
-    // An unknown user simply has no history, so there is nothing to recommend
-    User user = getUser(userid);
-    if (user.getUserId() == "0")
+    std::vector<std::string> recommendations;
+
+    const User *user = findUser(userId);
+    if (!user)
     {
         return recommendations;
     }
 
-    // Calculate similarity with other users
-    std::map<User, int> userSimilarity;
-    for (const User &otherUser : users)
-    {
-        if (otherUser.getUserId() != userid) // Exclude the current user
-        {
-            userSimilarity[otherUser] = countCommonMovies(user, otherUser);
-        }
-    }
-
-    // Find users who watched the reference movie
-    std::vector<User> similarUsers;
-    for (const auto &pair : userSimilarity)
-    {
-        const auto &otherUser = pair.first;
-        const auto &similarity = pair.second;
-        if (otherUser.hasWatched(movieId) && similarity > 0)
-        {
-            similarUsers.push_back(otherUser);
-        }
-    }
-
-    // If no similar users are found, return an empty list
-    if (similarUsers.empty())
-    {
-        return recommendations;
-    }
-
-    // Calculate movie relevance scores based on similar users
+    // Score candidate movies from users who watched the reference movie
     std::unordered_map<std::string, long long> movieRelevance;
-    for (const User &similarUser : similarUsers)
+    for (const User &other : users)
     {
-        int similarity = userSimilarity[similarUser];
-        for (std::string recommendedMovie : similarUser.getMovies())
+        if (other.getUserId() == userId || !other.hasWatched(movieId))
         {
-            // Avoid recommending movies the user has already watched or the reference movie
-            if (recommendedMovie != movieId &&
-                !user.hasWatched(recommendedMovie))
+            continue;
+        }
+        int similarity = countCommonMovies(*user, other);
+        if (similarity == 0)
+        {
+            continue;
+        }
+        for (const std::string &candidate : other.getMovies())
+        {
+            if (candidate != movieId && !user->hasWatched(candidate))
             {
-                movieRelevance[recommendedMovie] += similarity;
+                movieRelevance[candidate] += similarity;
             }
         }
     }
 
-    // Sort movies by relevance (descending order)
-    std::vector<std::pair<std::string, long long>> sortedRecommendations(
-        movieRelevance.begin(), movieRelevance.end());
-
-    std::sort(sortedRecommendations.begin(), sortedRecommendations.end(),
-              [](const std::pair<std::string, long long> &a, const std::pair<std::string, long long> &b)
+    std::vector<std::pair<std::string, long long>> sorted(movieRelevance.begin(), movieRelevance.end());
+    std::sort(sorted.begin(), sorted.end(),
+              [](const auto &a, const auto &b)
               {
                   return (a.second > b.second) || ((a.second == b.second) && (a.first < b.first));
               });
 
-    // Select top N recommendations
-    for (const auto &pair : sortedRecommendations)
+    for (const auto &pair : sorted)
     {
-        recommendations.push_back(pair.first);
         if (recommendations.size() >= MAX_RECOMMENDATIONS)
             break;
+        recommendations.push_back(pair.first);
     }
     return recommendations;
 }

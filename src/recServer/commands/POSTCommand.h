@@ -12,6 +12,7 @@ private:
 public:
     POSTCommand(MovieManager &manager);
     void execute(std::istringstream &input, std::ostream &output) override;
+    bool mutates() const override { return true; }
 };
 
 #endif

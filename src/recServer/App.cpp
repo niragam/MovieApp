@@ -1,6 +1,7 @@
 #include "App.h"
 #include "threadpool/ThreadPool.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <csignal>
 #include <iostream>
@@ -8,10 +9,10 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <chrono>
+#include <sys/time.h>
 #include <thread>
 #include <vector>
-
-int server_fd;
 
 App::App(std::string dataFile) : dataFile(std::move(dataFile))
 {
@@ -40,7 +41,7 @@ int App::run(int argc, char **argv)
         {
             return 1;  // Return error if server initialization fails
         }
-        acceptMultipleClients(server_fd, address);  // Start accepting clients
+        acceptMultipleClients(address);  // Start accepting clients
 
         return 0;  // Success
     }
@@ -53,7 +54,7 @@ int App::run(int argc, char **argv)
 // Initializes the server socket and binds it to the specified address and port
 int App::initServer(int port, struct sockaddr_in &address)
 {
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)  // Create the socket
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)  // Create the socket
     {
         return 1;  // Return error code if socket creation fails
     }
@@ -79,20 +80,31 @@ int App::initServer(int port, struct sockaddr_in &address)
     return 0;  // Success
 }
 
-// Accepts multiple client connections and creates a new thread for each client
-void App::acceptMultipleClients(int server_fd, struct sockaddr_in &address)
+// Idle clients are disconnected after this long, so they cannot pin a worker forever.
+static const int CLIENT_RECEIVE_TIMEOUT_SECONDS = 30;
+
+// Accepts client connections and hands each one to the thread pool
+void App::acceptMultipleClients(struct sockaddr_in &address)
 {
-    int new_socket;
-    int addrlen = sizeof(address);
-    // create a thread pool to handle client connections according to the number of threads in the system
-    ThreadPool pool(std::thread::hardware_concurrency(), [this](int client_socket) { handleClient(client_socket); });
+    socklen_t addrlen = sizeof(address);
+    // One worker per hardware thread (hardware_concurrency() may report 0)
+    size_t workers = std::max(1u, std::thread::hardware_concurrency());
+    ThreadPool pool(workers, [this](int client_socket) { handleClient(client_socket); });
     while (true)
     {
-        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
+        int new_socket = accept(server_fd, (struct sockaddr *)&address, &addrlen);
+        if (new_socket < 0)
         {
-            continue;  // If accepting the client fails, try again
+            if (errno == EMFILE || errno == ENFILE)
+            {
+                // Out of descriptors: back off instead of spinning at 100% CPU
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            continue;
         }
-        pool.addTask(new_socket);  // Add the client socket to the thread pool    
+        timeval timeout{CLIENT_RECEIVE_TIMEOUT_SECONDS, 0};
+        setsockopt(new_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        pool.addTask(new_socket);  // The pool worker owns the socket from here on
     }
 }
 
@@ -126,8 +138,10 @@ std::string App::processLine(const std::string &line)
     std::string command;
     input >> command;
     std::ostringstream output;
-    executeCommand(command, input, output);
-    manager.saveData(dataFile);  // Save data after handling each request
+    if (executeCommand(command, input, output))
+    {
+        manager.saveData(dataFile);  // Persist only after commands that can change data
+    }
     return output.str() + "\n";
 }
 
@@ -174,15 +188,14 @@ void App::handleClient(int client_socket)
     // The socket is closed by the thread pool worker that owns it, not here.
 }
 
-void App::executeCommand(const std::string &name, std::istringstream &input, std::ostringstream &output)
+bool App::executeCommand(const std::string &name, std::istringstream &input, std::ostringstream &output)
 {
     auto it = commands.find(name);
-    if (it != commands.end())  // If the command is found in the map
+    if (it == commands.end())
     {
-        it->second->execute(input, output);  // Execute the corresponding command
+        output << "400 Bad Request";  // Unknown command
+        return false;
     }
-    else
-    {
-        output << "400 Bad Request";  // Return an error if command is not found
-    }
+    it->second->execute(input, output);
+    return it->second->mutates();
 }
