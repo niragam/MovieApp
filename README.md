@@ -147,18 +147,36 @@ A movie is `{ id, title, description, categories: [names], releaseDate, releaseY
 
 ### Protocol
 
-Plain text over TCP. Each request is one line ending in `\n`. The server handles every complete line, so several requests may share one packet and one request may span several. Every response is exactly one line ending in `\n`: `<code> <reason>`, where a successful `GET` appends a tab and the space-separated movie ids.
+Plain text over TCP, as specified in assignment part 2:
+- Each request is one line ending in `\n`. Fields are separated by one or more spaces, and only spaces: a tab or any other whitespace makes the command invalid.
+- Every reply ends with `\n`.
+- The server handles every complete line it receives. Several requests may arrive in one packet, and one request may be split across several.
 
-| Command | Response |
-|---------|----------|
-| `PATCH <user> <movie>...` | `204 No Content`. Adds movies; creates the user if needed |
-| `POST <user> <movie>...` | `201 Created`, or `404 Not Found` if the user exists |
-| `DELETE <user> <movie>...` | `204 No Content`, or `404 Not Found` if the user or any movie is missing (nothing is deleted then) |
-| `GET <user> <movie>` | `200 Ok` or `200 Ok\t<id1> <id2> ...` |
-| `help` | `200 Ok\t<usage>` |
+| Command | Reply |
+|---------|-------|
+| `POST <user> <movie>...` | `201 Created`; `404 Not Found` if the user already exists |
+| `PATCH <user> <movie>...` | `204 No Content`; `404 Not Found` if the user was never created with `POST` |
+| `DELETE <user> <movie>...` | `204 No Content`; `404 Not Found` if the user or any of the movies is missing (then nothing is deleted) |
+| `GET <user> <movie>` | `200 Ok`, an empty line, then the recommendations separated by spaces; `404 Not Found` for an unknown user |
+| `help` | The command list (below) |
 | anything else | `400 Bad Request` |
 
+`help` replies with:
+
+```
+DELETE, arguments: [userid] [movieid1] [movieid2] ...
+GET, arguments: [userid] [movieid]
+PATCH, arguments: [userid] [movieid1] [movieid2] ...
+POST, arguments: [userid] [movieid1] [movieid2] ...
+help
+```
+
 Lines longer than 64 KiB are rejected, and idle connections are closed after 30 seconds.
+
+The API keeps the server in sync with MongoDB:
+- When recording a watch, it sends the user's full history with `PATCH`. If that returns 404 (a new user, or the server lost its data), it sends `POST` instead.
+- If a movie is deleted while the server is unreachable, the removal is stored and retried at startup and on that user's next watch.
+- At startup, it replays every user's history.
 
 ### Algorithm
 
