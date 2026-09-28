@@ -3,332 +3,249 @@ const movieModel = require('../models/movies');
 const categoryModel = require('../models/categories');
 const userModel = require('../models/users');
 const recClient = require('../services/recClient');
-
-const createMovie = async (req, res) => {
-    try {
-        const { title, categories, releaseDate, description, duration } = req.body;
-
-        if (!title || !categories || categories.length === 0) {
-            return res.status(400).json({ error: 'Title and at least one category are required' });
-        }
-
-        const categoryIds = [];
-        for (const categoryName of categories) {
-            const existingCategory = await categoryModel.findOne({ name: categoryName });
-            if (!existingCategory) {
-                return res.status(404).json({ error: `Category ${categoryName} not found` });
-            }
-            categoryIds.push(existingCategory._id);
-        }
-
-        const newMovie = new movieModel({ title, categories: categoryIds, releaseDate, description, duration });
-        await newMovie.save();
-
-        res.status(201)
-            .location(`/api/movies/${newMovie._id}`)
-            .end();
-
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
-}
-
-const getMovie = async (req, res) => {
-    try {
-        const movieId = req.params.id;
-
-        // Check if the movieId is a valid ObjectId
-        if (!mongoose.Types.ObjectId.isValid(movieId)) {
-            return res.status(404).json({ error: 'Movie not found' });
-        }
-
-        const movie = await movieModel.findById(movieId).populate('categories', 'name');
-        if (!movie) {
-            return res.status(404).json({ error: 'Movie not found' });
-        }
-
-        res.status(200).json({
-            id: movie._id,
-            title: movie.title,
-            categories: movie.categories.map(category => category.name),
-            releaseDate: movie.releaseDate,
-            description: movie.description,
-            duration: movie.duration
-        });
-
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
-}
-
-const updateMovie = async (req, res) => {
-    try {
-        const movieId = req.params.id;
-
-        // Check if the movieId is a valid ObjectId
-        if (!mongoose.Types.ObjectId.isValid(movieId)) {
-            return res.status(404).json({ error: 'Movie not found' });
-        }
-
-        const { title, categories, releaseDate, description, duration } = req.body;
-
-        if (!title || !categories || categories.length === 0) {
-            return res.status(400).json({ error: 'Title and at least one category are required' });
-        }
-
-        const movie = await movieModel.findById(movieId);
-        if (!movie) {
-            return res.status(404).json({ error: 'Movie not found' });
-        }
-
-        const categoryIds = [];
-        for (const categoryName of categories) {
-            const existingCategory = await categoryModel.findOne({ name: categoryName });
-            if (!existingCategory) {
-                return res.status(404).json({ error: `Category ${categoryName} not found` });
-            }
-            categoryIds.push(existingCategory._id);
-        }
-
-        movie.title = title;
-        movie.categories = categoryIds;
-        movie.releaseDate = releaseDate || null;
-        movie.description = description || null;
-        movie.duration = duration || null;
-
-        await movie.save();
-
-        res.status(204).end();
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-}
-
-const deleteMovie = async (req, res) => {
-    try {
-        const movieId = req.params.id;
-
-        // Check if the movieId is a valid ObjectId
-        if (!mongoose.Types.ObjectId.isValid(movieId)) {
-            return res.status(404).json({ error: 'Movie not found' });
-        }
-
-        const movie = await movieModel.findById(movieId);
-        if (!movie) {
-            return res.status(404).json({ error: 'Movie not found' });
-        }
-        // Only users who watched the movie need their recommendation data updated
-        const watchers = await userModel.find({ 'watchHistory.movieId': movieId }, { _id: 1 });
-
-        await userModel.updateMany(
-            { 'watchHistory.movieId': movieId },
-            { $pull: { watchHistory: { movieId } } }
-        );
-        await movieModel.findByIdAndDelete(movieId);
-
-        // MongoDB is the source of truth; if the recommendation server is unreachable,
-        // the startup resync (services/recSync.js) repairs it later.
-        for (const watcher of watchers) {
-            try {
-                await recClient.send(`DELETE ${watcher._id} ${movieId}`);
-            } catch (error) {
-                console.error(`Could not remove movie ${movieId} for user ${watcher._id}:`, error.message);
-            }
-        }
-        res.status(204).end();
-
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
-}
+const { toMovieDto } = require('../services/movieDto');
+const { escapeRegex } = require('../services/validation');
 
 const MAX_ROW_MOVIES = 20;
+const MAX_SEARCH_RESULTS = 50;
+const CATEGORY_NAMES = { path: 'categories', select: 'name' };
 
-const formatHomeMovie = movie => ({
-    id: movie._id,
-    title: movie.title,
-    releaseDate: movie.releaseDate || undefined,
-    description: movie.description || undefined,
-    duration: movie.duration || undefined
-});
-
-const returnMovies = async (req, res) => {
-    try {
-        const user = await userModel.findById(req.userId);
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        // Stored as ObjectIds: aggregation pipelines are not cast by Mongoose, so the
-        // $nin below must compare ObjectIds with ObjectIds.
-        const watchedIds = user.watchHistory.map(entry => entry.movieId);
-
-        const promoted = await categoryModel.find({ isPromoted: true });
-        const result = [];
-
-        for (const category of promoted) {
-            const movies = await movieModel.aggregate([
-                { $match: { categories: category._id, _id: { $nin: watchedIds } } },
-                { $sample: { size: MAX_ROW_MOVIES } }
-            ]);
-            if (movies.length > 0) {
-                result.push({ category: category.name, movies: movies.map(formatHomeMovie) });
-            }
-        }
-
-        // The 20 most recently watched movies, newest first
-        const recentIds = watchedIds.slice(-MAX_ROW_MOVIES).reverse();
-        const recentMovies = await movieModel.find({ _id: { $in: recentIds } }).lean();
-        const byId = new Map(recentMovies.map(movie => [String(movie._id), movie]));
-        const history = recentIds.map(id => byId.get(String(id))).filter(Boolean);
-        if (history.length > 0) {
-            result.push({ category: 'Watch History', movies: history.map(formatHomeMovie) });
-        }
-
-        res.json(result);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+// Resolves category names to ids with one query. Returns { ids } or { missing }.
+const resolveCategoryIds = async (names) => {
+    const found = await categoryModel.find({ name: { $in: names } }, { name: 1 });
+    const missing = names.filter(name => !found.some(category => category.name === name));
+    return missing.length ? { missing } : { ids: found.map(category => category._id) };
 };
 
+// Validates a create/replace body. Returns { error } or { fields } ready for the model.
+const parseMovieBody = async (body) => {
+    const { title, categories, releaseDate, description, duration, posterUrl, backdropUrl, videoUrl } = body;
+    if (typeof title !== 'string' || !title.trim()) {
+        return { error: [400, 'Title is required'] };
+    }
+    if (!Array.isArray(categories) || categories.length === 0 || !categories.every(c => typeof c === 'string')) {
+        return { error: [400, 'categories must be a non-empty array of category names'] };
+    }
+    const { ids, missing } = await resolveCategoryIds([...new Set(categories)]);
+    if (missing) {
+        return { error: [404, `Category not found: ${missing.join(', ')}`] };
+    }
+    return {
+        fields: {
+            title,
+            categories: ids,
+            releaseDate: releaseDate || null,
+            description: description || null,
+            duration: duration ?? null,
+            posterUrl: posterUrl || null,
+            backdropUrl: backdropUrl || null,
+            videoUrl: videoUrl || null,
+        }
+    };
+};
+
+const createMovie = async (req, res) => {
+    const { error, fields } = await parseMovieBody(req.body);
+    if (error) {
+        return res.status(error[0]).json({ error: error[1] });
+    }
+    const movie = await movieModel.create(fields);
+    res.status(201).location(`/api/movies/${movie._id}`).json({ id: movie._id });
+};
+
+const getMovie = async (req, res) => {
+    const movie = await movieModel.findById(req.params.id).populate(CATEGORY_NAMES);
+    if (!movie) {
+        return res.status(404).json({ error: 'Movie not found' });
+    }
+    res.status(200).json(toMovieDto(movie));
+};
+
+// Admin listing of every movie (the homepage endpoint is personalised and sampled).
+const getAllMovies = async (req, res) => {
+    const movies = await movieModel.find().sort({ title: 1 }).populate(CATEGORY_NAMES);
+    res.status(200).json(movies.map(toMovieDto));
+};
+
+// PUT replaces the whole movie: omitted optional fields are cleared.
+const updateMovie = async (req, res) => {
+    const movie = await movieModel.findById(req.params.id);
+    if (!movie) {
+        return res.status(404).json({ error: 'Movie not found' });
+    }
+    const { error, fields } = await parseMovieBody(req.body);
+    if (error) {
+        return res.status(error[0]).json({ error: error[1] });
+    }
+    movie.set(fields);
+    await movie.save();
+    res.status(204).end();
+};
+
+const deleteMovie = async (req, res) => {
+    const movieId = req.params.id;
+    const movie = await movieModel.findById(movieId);
+    if (!movie) {
+        return res.status(404).json({ error: 'Movie not found' });
+    }
+    // Only users who watched the movie need their recommendation data updated
+    const watchers = await userModel.find({ 'watchHistory.movieId': movieId }, { _id: 1 });
+
+    await userModel.updateMany(
+        { 'watchHistory.movieId': movieId },
+        { $pull: { watchHistory: { movieId } } }
+    );
+    await movieModel.findByIdAndDelete(movieId);
+
+    // MongoDB is the source of truth; if the recommendation server is unreachable,
+    // the startup resync (services/recSync.js) repairs it later.
+    for (const watcher of watchers) {
+        try {
+            await recClient.send(`DELETE ${watcher._id} ${movieId}`);
+        } catch (error) {
+            console.error(`Could not remove movie ${movieId} for user ${watcher._id}:`, error.message);
+        }
+    }
+    res.status(204).end();
+};
+
+// Homepage: a row per promoted category (up to 20 random unwatched movies each),
+// plus the user's 20 most recently watched movies, newest first.
+const returnMovies = async (req, res) => {
+    const user = await userModel.findById(req.userId);
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    // ObjectIds: aggregation pipelines are not cast by Mongoose, so $nin must compare
+    // ObjectIds with ObjectIds.
+    const watchedIds = user.watchHistory.map(entry => entry.movieId);
+
+    const promoted = await categoryModel.find({ isPromoted: true });
+    const result = [];
+
+    for (const category of promoted) {
+        const sampled = await movieModel.aggregate([
+            { $match: { categories: category._id, _id: { $nin: watchedIds } } },
+            { $sample: { size: MAX_ROW_MOVIES } }
+        ]);
+        if (sampled.length > 0) {
+            const movies = await movieModel.populate(sampled, CATEGORY_NAMES);
+            result.push({ category: category.name, movies: movies.map(toMovieDto) });
+        }
+    }
+
+    const recentIds = watchedIds.slice(-MAX_ROW_MOVIES).reverse();
+    const recentMovies = await movieModel.find({ _id: { $in: recentIds } }).populate(CATEGORY_NAMES);
+    const byId = new Map(recentMovies.map(movie => [String(movie._id), movie]));
+    const history = recentIds.map(id => byId.get(String(id))).filter(Boolean);
+    if (history.length > 0) {
+        result.push({ category: 'Watch History', movies: history.map(toMovieDto) });
+    }
+
+    res.json(result);
+};
 
 const watchMovie = async (req, res) => {
-    try {
-        const userId = req.userId;
-        const movieId = req.params.id;
+    const userId = req.userId;
+    const movieId = req.params.id;
 
-        // Check if the movieId is a valid ObjectId
-        if (!mongoose.Types.ObjectId.isValid(movieId)) {
-            return res.status(404).json({ error: 'Movie not found' });
-        }
+    if (!(await movieModel.exists({ _id: movieId }))) {
+        return res.status(404).json({ error: 'Movie not found' });
+    }
 
-        const movie = await movieModel.findById(movieId);
-        if (!movie) {
-            return res.status(404).json({ error: 'Movie not found' });
-        }
-
-        // One atomic update: drop any earlier entry for this movie and append a fresh one.
-        // (A read-modify-write here lost updates when two watches raced.)
-        const movieObjectId = new mongoose.Types.ObjectId(movieId);
-        const user = await userModel.findOneAndUpdate(
-            { _id: userId },
-            [{
-                $set: {
-                    watchHistory: {
-                        $concatArrays: [
-                            { $filter: { input: '$watchHistory', cond: { $ne: ['$$this.movieId', movieObjectId] } } },
-                            [{ movieId: movieObjectId, watchedAt: '$$NOW' }]
-                        ]
-                    }
+    // One atomic update: drop any earlier entry for this movie and append a fresh one.
+    // (A read-modify-write here lost updates when two watches raced.)
+    const movieObjectId = new mongoose.Types.ObjectId(movieId);
+    const user = await userModel.findOneAndUpdate(
+        { _id: userId },
+        [{
+            $set: {
+                watchHistory: {
+                    $concatArrays: [
+                        { $filter: { input: '$watchHistory', cond: { $ne: ['$$this.movieId', movieObjectId] } } },
+                        [{ movieId: movieObjectId, watchedAt: '$$NOW' }]
+                    ]
                 }
-            }],
-            { new: true }
-        );
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        const historyIds = user.watchHistory.map(entry => entry.movieId).join(' ');
-
-        // Send the user's full history: PATCH is idempotent, so this also repairs any
-        // earlier divergence between MongoDB and the recommendation server.
-        try {
-            const reply = await recClient.send(`PATCH ${userId} ${historyIds}`);
-            if (reply.code !== 204) {
-                console.error(`Recommendation server rejected PATCH: ${reply.code} ${reply.reason}`);
-                return res.status(502).json({ error: 'Recommendation service rejected the update' });
             }
-        } catch (error) {
-            if (error instanceof recClient.RecServerError) {
-                console.error(error.message);
-                return res.status(502).json({ error: 'Recommendation service unavailable' });
-            }
-            throw error;
-        }
-
-        res.status(204).end();
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Internal server error' });
+        }],
+        { new: true }
+    );
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
     }
-}
 
+    // Send the user's full history: PATCH is an idempotent upsert, so this also repairs
+    // any earlier divergence between MongoDB and the recommendation server.
+    const historyIds = user.watchHistory.map(entry => entry.movieId).join(' ');
+    try {
+        const reply = await recClient.send(`PATCH ${userId} ${historyIds}`);
+        if (reply.code !== 204) {
+            console.error(`Recommendation server rejected PATCH: ${reply.code} ${reply.reason}`);
+            return res.status(502).json({ error: 'Recommendation service rejected the update' });
+        }
+    } catch (error) {
+        if (error instanceof recClient.RecServerError) {
+            console.error(error.message);
+            return res.status(502).json({ error: 'Recommendation service unavailable' });
+        }
+        throw error;
+    }
+    res.status(204).end();
+};
+
+// Returns up to 10 recommended movies (full objects, in recommendation order).
 const recommendMovies = async (req, res) => {
-    try {
-        const userId = req.userId;
-        const movieId = req.params.id;
+    const userId = req.userId;
+    const movieId = req.params.id;
 
-        // Check if the movieId is a valid ObjectId
-        if (!mongoose.Types.ObjectId.isValid(movieId)) {
-            return res.status(404).json({ error: 'Movie not found' });
-        }
-
-        const movie = await movieModel.findById(movieId);
-        if (!movie) {
-            return res.status(404).json({ error: 'Movie not found' });
-        }
-
-        const user = await userModel.findById(userId);
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        let reply;
-        try {
-            reply = await recClient.send(`GET ${userId} ${movieId}`);
-        } catch (error) {
-            if (error instanceof recClient.RecServerError) {
-                console.error(error.message);
-                return res.status(503).json({ error: 'Recommendation service unavailable' });
-            }
-            throw error;
-        }
-        if (reply.code !== 200) {
-            console.error(`Recommendation server rejected GET: ${reply.code} ${reply.reason}`);
-            return res.status(502).json({ error: 'Recommendation service error' });
-        }
-
-        res.status(200).json({ "Recommended Movies": reply.ids.join(' ') });
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
+    if (!(await movieModel.exists({ _id: movieId }))) {
+        return res.status(404).json({ error: 'Movie not found' });
     }
-}
 
+    // RecServerError propagates to the error handler, which answers 503.
+    const reply = await recClient.send(`GET ${userId} ${movieId}`);
+    if (reply.code !== 200) {
+        console.error(`Recommendation server rejected GET: ${reply.code} ${reply.reason}`);
+        return res.status(502).json({ error: 'Recommendation service error' });
+    }
+
+    const ids = reply.ids.filter(id => mongoose.isObjectIdOrHexString(id));
+    const movies = await movieModel.find({ _id: { $in: ids } }).populate(CATEGORY_NAMES);
+    const byId = new Map(movies.map(movie => [String(movie._id), movie]));
+    // Keep the recommendation order; silently skip movies deleted since they were watched
+    res.status(200).json(ids.map(id => byId.get(id)).filter(Boolean).map(toMovieDto));
+};
+
+// Case-insensitive literal match on title, description or category name; a four-digit
+// query also matches the release year.
 const searchMovies = async (req, res) => {
-    try {
-        const query = req.params.query;
-        console.log(query);
-
-        const searchCriteria = [
-            { title: { $regex: query, $options: "i" } },
-            { description: { $regex: query, $options: "i" } },
-            { categories: { $elemMatch: { name: { $regex: query, $options: "i" } } } }
-        ];
-        // Check if the query is a valid date
-        if (!isNaN(Date.parse(query))) {
-            searchCriteria.push({ releaseDate: query });
-        }
-
-        const movies = await movieModel.find({
-            $or: searchCriteria,
-        }).populate('categories', 'name');
-        console.log(movies);
-        res.status(200).json(movies.map(movie => ({
-            id: movie._id,
-            title: movie.title,
-            categories: movie.categories.map(category => category.name),
-            releaseDate: movie.releaseDate,
-            description: movie.description,
-            duration: movie.duration
-        })));
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Internal server error' });
+    const query = (req.params.query || '').trim();
+    if (!query) {
+        return res.status(400).json({ error: 'Search query is required' });
     }
-}
+    const pattern = new RegExp(escapeRegex(query), 'i');
 
+    const matchingCategories = await categoryModel.find({ name: pattern }, { _id: 1 });
+    const criteria = [
+        { title: pattern },
+        { description: pattern },
+        { categories: { $in: matchingCategories.map(category => category._id) } }
+    ];
+    if (/^\d{4}$/.test(query)) {
+        const year = Number(query);
+        criteria.push({ releaseDate: { $gte: new Date(Date.UTC(year, 0, 1)), $lt: new Date(Date.UTC(year + 1, 0, 1)) } });
+    }
 
-module.exports = { createMovie, getMovie, updateMovie, deleteMovie, returnMovies, watchMovie, recommendMovies, searchMovies };
+    const movies = await movieModel.find({ $or: criteria })
+        .sort({ title: 1 })
+        .limit(MAX_SEARCH_RESULTS)
+        .populate(CATEGORY_NAMES);
+    res.status(200).json(movies.map(toMovieDto));
+};
+
+const rejectEmptySearch = (req, res) => res.status(400).json({ error: 'Search query is required' });
+
+module.exports = {
+    createMovie, getMovie, getAllMovies, updateMovie, deleteMovie, returnMovies,
+    watchMovie, recommendMovies, searchMovies, rejectEmptySearch
+};

@@ -178,9 +178,20 @@ MOVIES=(
     '{"title": "Free Solo", "categories": ["Documentary"], "description": "A climber attempts to free solo El Capitan.", "duration": 100, "releaseDate": "2018-09-28"}'
 )
 
+# Public sample videos (Google's test bucket), assigned round-robin
+VIDEO_BASE="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample"
+VIDEOS=(BigBuckBunny ElephantsDream ForBiggerBlazes ForBiggerEscapes ForBiggerFun ForBiggerJoyrides ForBiggerMeltdowns Sintel TearsOfSteel SubaruOutbackOnStreetAndDirt)
+
+index=0
 for movie in "${MOVIES[@]}"; do
     title=$(echo "$movie" | grep -o '"title": "[^"]*"' | cut -d'"' -f4)
     echo -n "   Creating movie: $title... "
+    # Placeholder artwork labelled with the title, plus a sample video
+    label=$(echo "$title" | sed 's/[^A-Za-z0-9 ]//g; s/ /+/g')
+    video="$VIDEO_BASE/${VIDEOS[$((index % ${#VIDEOS[@]}))]}.mp4"
+    media="\"posterUrl\": \"https://placehold.co/400x600/141414/e50914?text=$label\", \"backdropUrl\": \"https://placehold.co/1280x720/1a1a1a/ffffff?text=$label\", \"videoUrl\": \"$video\""
+    movie="{$media, ${movie#\{}"
+    index=$((index + 1))
     RESULT=$(api_call POST "/movies" "$movie" "$ADMIN_TOKEN")
     if echo "$RESULT" | grep -q "error"; then
         echo "(may already exist or category missing)"

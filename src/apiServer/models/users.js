@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { httpUrlField } = require('../services/validation');
 const Schema = mongoose.Schema;
 
 const UserSchema = new Schema({
@@ -13,8 +14,10 @@ const UserSchema = new Schema({
     },
     name: {
         type: String,
-        required: true
+        required: true,
+        trim: true
     },
+    avatarUrl: httpUrlField('avatarUrl'),
     role: {
         type: String,
         enum: ['user', 'admin'],

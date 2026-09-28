@@ -4,8 +4,12 @@ const Schema = mongoose.Schema;
 const CategorySchema = new Schema({
     name: {
         type: String,
-        required: true
+        required: true,
+        trim: true,
+        minlength: 1,
+        unique: true
     },
+    // Promoted categories appear as rows on the homepage.
     isPromoted: {
         type: Boolean,
         default: false

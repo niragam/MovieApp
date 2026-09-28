@@ -1,10 +1,12 @@
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
 const path = require('path');
 const userRoutes = require('./routes/users');
 const tokenRoutes = require('./routes/tokens');
 const categoryRoutes = require('./routes/categories');
 const movieRoutes = require('./routes/movies');
+const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
@@ -24,20 +26,22 @@ app.use('/api/tokens', tokenRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/movies', movieRoutes);
 
-// Serve static frontend files (production)
-app.use(express.static(path.join(__dirname, '../frontend/dist')));
+// Unknown API routes get a JSON 404, never the SPA or an HTML error page
+app.use('/api', (req, res) => {
+    res.status(404).json({ error: 'Not found' });
+});
 
-// Fallback to index.html for SPA routing
+// Serve the built frontend when it exists (production); in development Vite serves it.
+const distDir = path.join(__dirname, '../frontend/dist');
+const indexHtml = path.join(distDir, 'index.html');
+app.use(express.static(distDir));
 app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api')) {
+    if (!fs.existsSync(indexHtml)) {
         return next();
     }
-    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+    res.sendFile(indexHtml);
 });
 
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ error: 'Something broke!' });
-});
+app.use(errorHandler);
 
 module.exports = app;

@@ -1,91 +1,75 @@
 const category = require('../models/categories');
+const movieModel = require('../models/movies');
+
+// Validates the writable fields. With `partial`, omitted fields are allowed (PATCH).
+const parseCategoryBody = ({ name, isPromoted }, { partial }) => {
+    const fields = {};
+    if (name !== undefined || !partial) {
+        if (typeof name !== 'string' || !name.trim()) {
+            return { error: 'Name is required and must be a non-empty string' };
+        }
+        fields.name = name.trim();
+    }
+    if (isPromoted !== undefined) {
+        if (typeof isPromoted !== 'boolean') {
+            return { error: 'isPromoted must be a boolean' };
+        }
+        fields.isPromoted = isPromoted;
+    }
+    if (partial && Object.keys(fields).length === 0) {
+        return { error: 'Nothing to update' };
+    }
+    return { fields };
+};
 
 const getCategories = async (req, res) => {
-    try {
-        const categories = await category.find();
-        res.status(200).json(categories);
-
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
-}
+    res.status(200).json(await category.find().sort({ name: 1 }));
+};
 
 const createCategory = async (req, res) => {
-    try {
-        const { name, isPromoted } = req.body;
-
-        if (!name) {
-            return res.status(400).json({ error: 'Name is required' });
-        }
-
-        const existingCategory = await category.findOne({ name });
-        if (existingCategory) {
-            return res.status(409).json({ error: 'Category already exists' });
-        }
-
-        const newCategory = new category({ name, isPromoted });
-        await newCategory.save();
-
-        res.status(201)
-            .location(`/api/categories/${newCategory._id}`)
-            .end();
-
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
+    const { error, fields } = parseCategoryBody(req.body, { partial: false });
+    if (error) {
+        return res.status(400).json({ error });
     }
-}
+    if (await category.exists({ name: fields.name })) {
+        return res.status(409).json({ error: 'Category already exists' });
+    }
+    // A concurrent duplicate still hits the unique index -> 409 via the error handler
+    const newCategory = await category.create(fields);
+    res.status(201).location(`/api/categories/${newCategory._id}`).json(newCategory);
+};
 
 const getCategory = async (req, res) => {
-    try {
-        const categoryId = req.params.id;
-        const foundCategory = await category.findById(categoryId);
-
-        if (!foundCategory) {
-            return res.status(404).json({ error: 'Category not found' });
-        }
-        res.status(200).json(foundCategory);
-
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
+    const foundCategory = await category.findById(req.params.id);
+    if (!foundCategory) {
+        return res.status(404).json({ error: 'Category not found' });
     }
-}
+    res.status(200).json(foundCategory);
+};
 
 const updateCategory = async (req, res) => {
-    try {
-        const categoryId = req.params.id;
-        const { name, isPromoted } = req.body;
-        const updatedCategory = await category.findByIdAndUpdate(
-            categoryId,
-            { name, isPromoted },
-            { new: true }
-        );
-
-        if (!updatedCategory) {
-            return res.status(404).json({ error: 'Category not found' });
-        }
-
-        res.status(204).send();
+    const { error, fields } = parseCategoryBody(req.body, { partial: true });
+    if (error) {
+        return res.status(400).json({ error });
     }
-    catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
+    if (fields.name && await category.exists({ name: fields.name, _id: { $ne: req.params.id } })) {
+        return res.status(409).json({ error: 'Category already exists' });
     }
-}
+    const updatedCategory = await category.findByIdAndUpdate(req.params.id, fields, { new: true, runValidators: true });
+    if (!updatedCategory) {
+        return res.status(404).json({ error: 'Category not found' });
+    }
+    res.status(204).send();
+};
 
 const deleteCategory = async (req, res) => {
-    try {
-        const categoryId = req.params.id;
-        const deletedCategory = await category.findByIdAndDelete(categoryId);
-
-        if (!deletedCategory) {
-            return res.status(404).json({ error: 'Category not found' });
-        }
-
-        res.status(204).send();
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
+    const deletedCategory = await category.findByIdAndDelete(req.params.id);
+    if (!deletedCategory) {
+        return res.status(404).json({ error: 'Category not found' });
     }
-}
-
-
+    // Don't leave dangling references in movies
+    await movieModel.updateMany({ categories: deletedCategory._id }, { $pull: { categories: deletedCategory._id } });
+    res.status(204).send();
+};
 
 module.exports = { createCategory, getCategories, getCategory, updateCategory, deleteCategory };

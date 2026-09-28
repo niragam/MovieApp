@@ -1,12 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const categoryController = require('../controllers/categories');
-const { auth, adminAuth } = require('../auth/auth');
+const { adminAuth } = require('../auth/auth');
+const asyncHandler = require('../middleware/asyncHandler');
+const validateObjectId = require('../middleware/validateObjectId');
 
-router.get('/', categoryController.getCategories);
-router.post('/', adminAuth, categoryController.createCategory);
-router.get('/:id', categoryController.getCategory);
-router.patch('/:id', adminAuth, categoryController.updateCategory);
-router.delete('/:id', adminAuth, categoryController.deleteCategory);
+const validId = validateObjectId('id');
+
+router.get('/', asyncHandler(categoryController.getCategories));
+router.post('/', adminAuth, asyncHandler(categoryController.createCategory));
+router.get('/:id', validId, asyncHandler(categoryController.getCategory));
+router.patch('/:id', adminAuth, validId, asyncHandler(categoryController.updateCategory));
+router.delete('/:id', adminAuth, validId, asyncHandler(categoryController.deleteCategory));
 
 module.exports = router;
