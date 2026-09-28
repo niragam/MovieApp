@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =============================================================================
-# restart.sh - Stop all services and restart from scratch
+# start.sh - Stop all services and restart from scratch
 # =============================================================================
 
 set -e
@@ -56,8 +56,8 @@ for container in mongo-netflix web-ser recserver; do
     fi
 done
 
-# Extra cleanup: stop any container using our ports
-for port in 27017 3000 8000; do
+# Extra cleanup: stop any container using our published port
+for port in 3000; do
     CONTAINER_ID=$(docker ps -q --filter "publish=$port" 2>/dev/null || true)
     if [ -n "$CONTAINER_ID" ]; then
         echo "   Stopping container using port $port..."
@@ -74,7 +74,7 @@ echo ""
 # -----------------------------------------------------------------------------
 echo "Checking if ports are available..."
 PORTS_BLOCKED=false
-for port in 27017 3000 8000; do
+for port in 3000; do
     PORT_PID=$(lsof -ti:$port 2>/dev/null || true)
     if [ -n "$PORT_PID" ]; then
         echo "   Port $port is still in use by PID: $PORT_PID"
@@ -86,9 +86,7 @@ done
 if [ "$PORTS_BLOCKED" = true ]; then
     echo ""
     echo "   Some ports are blocked. You may need to manually stop these processes:"
-    echo "      sudo kill -9 \$(lsof -ti:27017) # for MongoDB"
     echo "      sudo kill -9 \$(lsof -ti:3000)  # for API"
-    echo "      sudo kill -9 \$(lsof -ti:8000)  # for RecServer"
     echo ""
     read -p "   Continue anyway? [y/N]: " -n 1 -r
     echo ""
@@ -105,9 +103,21 @@ echo ""
 read -p "Do you want to remove all data (fresh database)? [y/N]: " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "   Removing Docker volumes..."
-    docker volume rm asp-ex3_mongodb_data 2>/dev/null || true
+    echo "   Removing Docker volumes (MongoDB and recommendation data)..."
+    # -v removes this project's named volumes, whatever the compose project is called
+    docker-compose down -v 2>/dev/null || true
     echo "   Data removed - fresh start!"
+fi
+
+echo ""
+
+# -----------------------------------------------------------------------------
+# Configuration: the API needs JWT_SECRET (docker-compose reads it from .env)
+# -----------------------------------------------------------------------------
+if [ ! -f "$PROJECT_DIR/.env" ]; then
+    echo "No .env found - creating one with a random JWT_SECRET..."
+    SECRET=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    sed "s/^JWT_SECRET=.*/JWT_SECRET=$SECRET/" "$PROJECT_DIR/.env.example" > "$PROJECT_DIR/.env"
 fi
 
 echo ""
@@ -174,8 +184,7 @@ echo "Service URLs:"
 VITE_PORT=$(grep -o 'localhost:[0-9]*' /tmp/vite.log 2>/dev/null | head -1 | cut -d':' -f2 || echo "5173")
 echo "   Frontend:  http://localhost:${VITE_PORT}"
 echo "   API:       http://localhost:3000"
-echo "   MongoDB:   localhost:27017"
-echo "   RecServer: localhost:8000"
+echo "   MongoDB and RecServer are internal to the Docker network"
 echo ""
 echo "Useful commands:"
 echo "   docker-compose logs -f     # View backend logs"

@@ -4,9 +4,10 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install
+# Reproducible, production-only install
+RUN npm ci --omit=dev
 
-COPY src/ ./src/
+COPY src/apiServer ./src/apiServer
 
 # Expose the port
 EXPOSE 3000

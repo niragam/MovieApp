@@ -1,0 +1,11 @@
+# Keep build contexts small and free of host build artefacts: a copied build/
+# directory carries a CMakeCache.txt with host paths that breaks the image build.
+.git
+node_modules
+**/node_modules
+build
+build-*
+src/frontend/dist
+data/*.txt
+data/*.tmp
+.env

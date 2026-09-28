@@ -13,16 +13,8 @@ if(SANITIZE)
   add_link_options(-fsanitize=${SANITIZE})
 endif()
 
-enable_testing()
-
-# Fetch GoogleTest
-include(FetchContent)
-FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/refs/tags/release-1.11.0.zip
-)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+# Tests need GoogleTest (downloaded at configure time); the Docker image turns them off.
+option(BUILD_TESTS "Build the gtest test executables" ON)
 
 # Include directories
 include_directories(src/recServer)
@@ -47,14 +39,23 @@ target_link_libraries(movie_lib pthread)
 add_executable(movieApp src/recServer/main.cpp)
 target_link_libraries(movieApp movie_lib pthread)
 
-# Add test executables
-add_executable(testsMovies src/recServer/tests/testsMovies.cpp)
-target_link_libraries(testsMovies gtest_main movie_lib pthread)
-add_test(NAME testsMovies COMMAND testsMovies)
+if(BUILD_TESTS)
+  enable_testing()
 
-add_executable(testsServer src/recServer/tests/testsServer.cpp)
-target_link_libraries(testsServer gtest_main movie_lib pthread)
-add_test(NAME testsServer COMMAND testsServer)
+  include(FetchContent)
+  FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/refs/tags/release-1.11.0.zip
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  )
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(googletest)
 
-# Install targets for easier container execution
-install(TARGETS movieApp testsMovies RUNTIME DESTINATION /usr/src/project/build)
+  add_executable(testsMovies src/recServer/tests/testsMovies.cpp)
+  target_link_libraries(testsMovies gtest_main movie_lib pthread)
+  add_test(NAME testsMovies COMMAND testsMovies)
+
+  add_executable(testsServer src/recServer/tests/testsServer.cpp)
+  target_link_libraries(testsServer gtest_main movie_lib pthread)
+  add_test(NAME testsServer COMMAND testsServer)
+endif()

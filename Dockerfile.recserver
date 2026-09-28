@@ -5,22 +5,21 @@ RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
     cmake \
     g++ \
-    git \
-    wget \
-    libpthread-stubs0-dev \
-    python3 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY . .
+# Only what the build needs
+COPY CMakeLists.txt ./
+COPY src/recServer ./src/recServer
 
-# Build the application
-RUN mkdir -p build && \
-    cd build && \
-    cmake .. && \
-    make
+# Build the server (tests are built and run outside the image)
+RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF && \
+    cmake --build build -j"$(nproc)"
+
+# User data is persisted here (a named volume in docker-compose.yml)
+RUN mkdir -p /app/data
 
 EXPOSE 8000
 
