@@ -47,7 +47,7 @@ describe('watch and recommend through the recommendation server', () => {
 
         // MongoDB is the source of truth and was still updated
         const stored = await mongoose.connection.db.collection('users').findOne({ username: 'alice' });
-        expect(stored.watchHistory.map(String)).toEqual([movieId]);
+        expect(stored.watchHistory.map(entry => String(entry.movieId))).toEqual([movieId]);
 
         const rec = await request(app).get(`/api/movies/${movieId}/recommend`).set(h.auth(user.token));
         expect(rec.status).toBe(503);
@@ -74,13 +74,15 @@ describe('startup resync', () => {
         const { syncAllHistories } = require('../services/recSync');
         const users = mongoose.connection.db.collection('users');
         const a = new mongoose.Types.ObjectId(), b = new mongoose.Types.ObjectId();
+        const m1 = new mongoose.Types.ObjectId(), m2 = new mongoose.Types.ObjectId();
         await users.insertMany([
-            { _id: a, username: 'a', password: 'x', name: 'a', watchHistory: ['m1', 'm2'] },
+            { _id: a, username: 'a', password: 'x', name: 'a', watchHistory: [
+                { movieId: m1, watchedAt: new Date(1) }, { movieId: m2, watchedAt: new Date(2) }] },
             { _id: b, username: 'b', password: 'x', name: 'b', watchHistory: [] },
         ]);
         const fake = await h.startFakeRecServer();
         await expect(syncAllHistories()).resolves.toBe(1);
-        expect(fake.received).toEqual([`PATCH ${a} m1 m2`]);
+        expect(fake.received).toEqual([`PATCH ${a} ${m1} ${m2}`]);
         await fake.close();
     });
 });

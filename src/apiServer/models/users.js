@@ -24,10 +24,16 @@ const UserSchema = new Schema({
         type: Date,
         default: Date.now
     },
+    // Oldest first: re-watching a movie moves it to the end with a fresh timestamp.
     watchHistory: {
-        type: Array,
+        type: [new Schema({
+            movieId: { type: Schema.Types.ObjectId, ref: 'Movie', required: true },
+            watchedAt: { type: Date, required: true }
+        }, { _id: false })],
         default: []
     }
 });
+
+UserSchema.index({ 'watchHistory.movieId': 1 });
 
 module.exports = mongoose.model('User', UserSchema);

@@ -6,7 +6,8 @@ const recClient = require('./recClient');
 const syncAllHistories = async () => {
     const users = await userModel.find({ 'watchHistory.0': { $exists: true } }, { watchHistory: 1 });
     for (const user of users) {
-        await recClient.send(`PATCH ${user._id} ${user.watchHistory.join(' ')}`);
+        const movieIds = user.watchHistory.map(entry => entry.movieId).join(' ');
+        await recClient.send(`PATCH ${user._id} ${movieIds}`);
     }
     return users.length;
 };
