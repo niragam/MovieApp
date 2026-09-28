@@ -9,11 +9,10 @@ void helpCommand::execute(std::istringstream &input, std::ostream &output)
         output << "400 Bad Request";
         return; // Ignore invalid input that cannot be converted
     }
-    // Single-line response, like every other command
-    output << "200 Ok\t"
-           << "DELETE [userid] [movieid1] [movieid2] ...; "
-           << "GET [userid] [movieid]; "
-           << "PATCH [userid] [movieid1] [movieid2] ...; "
-           << "POST [userid] [movieid1] [movieid2] ...; "
+    // Commands in alphabetical order, help last; the server adds the final newline
+    output << "DELETE, arguments: [userid] [movieid1] [movieid2] ...\n"
+           << "GET, arguments: [userid] [movieid]\n"
+           << "PATCH, arguments: [userid] [movieid1] [movieid2] ...\n"
+           << "POST, arguments: [userid] [movieid1] [movieid2] ...\n"
            << "help";
 }

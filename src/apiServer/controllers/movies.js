@@ -3,6 +3,7 @@ const movieModel = require('../models/movies');
 const categoryModel = require('../models/categories');
 const userModel = require('../models/users');
 const recClient = require('../services/recClient');
+const { syncUserHistory, historyIds } = require('../services/recSync');
 const { toMovieDto } = require('../services/movieDto');
 const { escapeRegex } = require('../services/validation');
 
@@ -174,13 +175,12 @@ const watchMovie = async (req, res) => {
         return res.status(404).json({ error: 'User not found' });
     }
 
-    // Send the user's full history: PATCH is an idempotent upsert, so this also repairs
-    // any earlier divergence between MongoDB and the recommendation server.
-    const historyIds = user.watchHistory.map(entry => entry.movieId).join(' ');
+    // Send the user's full history (adding already-known movies is harmless), which also
+    // repairs any earlier divergence between MongoDB and the recommendation server.
     try {
-        const reply = await recClient.send(`PATCH ${userId} ${historyIds}`);
-        if (reply.code !== 204) {
-            console.error(`Recommendation server rejected PATCH: ${reply.code} ${reply.reason}`);
+        const reply = await syncUserHistory(userId, historyIds(user));
+        if (reply.code !== 204 && reply.code !== 201) {
+            console.error(`Recommendation server rejected the update: ${reply.code} ${reply.reason}`);
             return res.status(502).json({ error: 'Recommendation service rejected the update' });
         }
     } catch (error) {
@@ -204,6 +204,10 @@ const recommendMovies = async (req, res) => {
 
     // RecServerError propagates to the error handler, which answers 503.
     const reply = await recClient.send(`GET ${userId} ${movieId}`);
+    if (reply.code === 404) {
+        // The recommendation server has no history for this user yet
+        return res.status(200).json([]);
+    }
     if (reply.code !== 200) {
         console.error(`Recommendation server rejected GET: ${reply.code} ${reply.reason}`);
         return res.status(502).json({ error: 'Recommendation service error' });

@@ -148,28 +148,33 @@ protected:
         std::remove(dataFile.c_str());
     }
 
-    std::vector<std::string> replies(int count)
+    // Reads until exactly `expected.size()` bytes arrived (or timeout/EOF) and returns them
+    std::string readBytes(size_t count)
     {
-        std::string data = readLines(fds[0], count);
-        std::vector<std::string> lines;
-        size_t start = 0, nl;
-        while ((nl = data.find('\n', start)) != std::string::npos)
+        std::string data;
+        char buf[1024];
+        while (data.size() < count)
         {
-            lines.push_back(data.substr(start, nl - start));
-            start = nl + 1;
+            ssize_t n = recv(fds[0], buf, std::min(sizeof(buf), count - data.size()), 0);
+            if (n <= 0)
+                break;
+            data.append(buf, static_cast<size_t>(n));
         }
-        return lines;
+        return data;
+    }
+
+    // Sends requests and checks the exact reply bytes
+    void expectReplies(const std::string &requests, const std::string &expected)
+    {
+        sendAllBytes(fds[0], requests);
+        EXPECT_EQ(readBytes(expected.size()), expected);
     }
 };
 
 TEST_F(FramingTest, CoalescedRequestsAreHandledSeparately)
 {
-    sendAllBytes(fds[0], "POST u1 m1\nPATCH u1 m2\nGET u1 m1\n");
-    auto r = replies(3);
-    ASSERT_EQ(r.size(), 3u);
-    EXPECT_EQ(r[0], "201 Created");
-    EXPECT_EQ(r[1], "204 No Content");
-    EXPECT_EQ(r[2], "200 Ok");
+    expectReplies("POST u1 m1\nPATCH u1 m2\nGET u1 m1\n",
+                  "201 Created\n204 No Content\n200 Ok\n\n\n");
     // No protocol words leaked into the user's history
     std::ifstream file(dataFile);
     std::string line;
@@ -181,48 +186,49 @@ TEST_F(FramingTest, RequestSplitAcrossWritesIsReassembled)
 {
     sendAllBytes(fds[0], "POST u1 ");
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    sendAllBytes(fds[0], "m1 m2\r\n");
-    auto r = replies(1);
-    ASSERT_EQ(r.size(), 1u);
-    EXPECT_EQ(r[0], "201 Created");
+    expectReplies("m1 m2\r\n", "201 Created\n");
 }
 
-TEST_F(FramingTest, EveryReplyIsOneTerminatedLine)
+// Exact output from the assignment: GET is "200 Ok", two newlines, then the ids
+TEST_F(FramingTest, GetReplyFormat)
 {
-    sendAllBytes(fds[0], "POST a x y\nPOST b x z\nGET a x\nhelp\n");
-    auto r = replies(4);
-    ASSERT_EQ(r.size(), 4u);
-    EXPECT_EQ(r[2], "200 Ok\tz");
-    EXPECT_EQ(r[3].rfind("200 Ok\t", 0), 0u);
+    expectReplies("POST a x y\nPOST b x z w\nGET a x\n",
+                  "201 Created\n201 Created\n200 Ok\n\nw z\n");
 }
 
-TEST_F(FramingTest, UnknownAndEmptyCommandsAreRejected)
+TEST_F(FramingTest, HelpListsCommandsAlphabeticallyWithHelpLast)
 {
-    sendAllBytes(fds[0], "FOO bar\n\n");
-    auto r = replies(2);
-    ASSERT_EQ(r.size(), 2u);
-    EXPECT_EQ(r[0], "400 Bad Request");
-    EXPECT_EQ(r[1], "400 Bad Request");
+    expectReplies("help\n",
+                  "DELETE, arguments: [userid] [movieid1] [movieid2] ...\n"
+                  "GET, arguments: [userid] [movieid]\n"
+                  "PATCH, arguments: [userid] [movieid1] [movieid2] ...\n"
+                  "POST, arguments: [userid] [movieid1] [movieid2] ...\n"
+                  "help\n");
+}
+
+TEST_F(FramingTest, UnknownAndMalformedCommandsAreRejected)
+{
+    expectReplies("FOO bar\n\nPOST onlyUser\nGET a\nhelp extra\n",
+                  "400 Bad Request\n400 Bad Request\n400 Bad Request\n400 Bad Request\n400 Bad Request\n");
+}
+
+// Fields are separated by spaces only; any other whitespace makes the command invalid
+TEST_F(FramingTest, TabsAreNotSeparators)
+{
+    expectReplies("POST\tu1 m1\nPOST u1\tm1\nhelp\t\nPOST  u1   m1  \n",
+                  "400 Bad Request\n400 Bad Request\n400 Bad Request\n201 Created\n");
+}
+
+TEST_F(FramingTest, UnknownUsersAre404ForPatchDeleteAndGet)
+{
+    expectReplies("PATCH ghost m1\nDELETE ghost m1\nGET ghost m1\nPOST u m1\nPOST u m2\nDELETE u m9\n",
+                  "404 Not Found\n404 Not Found\n404 Not Found\n201 Created\n404 Not Found\n404 Not Found\n");
 }
 
 TEST_F(FramingTest, OverlongLineIsRejectedAndConnectionClosed)
 {
     std::string huge(70 * 1024, 'a');
-    sendAllBytes(fds[0], huge);
-    auto r = replies(1);
-    ASSERT_EQ(r.size(), 1u);
-    EXPECT_EQ(r[0], "400 Bad Request");
+    expectReplies(huge, "400 Bad Request\n");
     char c;
     EXPECT_LE(recv(fds[0], &c, 1, 0), 0); // server closed the session (EOF or reset)
-}
-
-TEST_F(FramingTest, PatchCreatesUnknownUserAndGetOfUnknownUserIsEmpty)
-{
-    sendAllBytes(fds[0], "PATCH newUser m1 m2\nGET ghost m1\nPATCH other m1 m3\nGET newUser m1\n");
-    auto r = replies(4);
-    ASSERT_EQ(r.size(), 4u);
-    EXPECT_EQ(r[0], "204 No Content");
-    EXPECT_EQ(r[1], "200 Ok");
-    EXPECT_EQ(r[2], "204 No Content");
-    EXPECT_EQ(r[3], "200 Ok\tm3");
 }

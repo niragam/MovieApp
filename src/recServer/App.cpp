@@ -2,6 +2,7 @@
 #include "threadpool/ThreadPool.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <csignal>
 #include <iostream>
@@ -134,6 +135,15 @@ static bool sendAll(int socket, const std::string &data)
 // Executes one request line and returns the newline-terminated response.
 std::string App::processLine(const std::string &line)
 {
+    // Fields are separated by spaces only (not tabs or other whitespace), so any other
+    // whitespace makes the command invalid.
+    bool onlySpaces = std::none_of(line.begin(), line.end(), [](unsigned char c)
+                                   { return c != ' ' && std::isspace(c); });
+    if (!onlySpaces)
+    {
+        return "400 Bad Request\n";
+    }
+
     std::istringstream input(line);
     std::string command;
     input >> command;
@@ -146,7 +156,8 @@ std::string App::processLine(const std::string &line)
 }
 
 // Protocol: every request is one line terminated by '\n' (a trailing '\r' is ignored),
-// and every response is exactly one line terminated by '\n'. TCP is a byte stream, so
+// and every response ends with '\n'. Most responses are a single status line; a successful
+// GET is "200 Ok", an empty line, then the recommendations line. TCP is a byte stream, so
 // bytes are buffered until complete lines are available; one read may carry several
 // requests, or only part of one.
 void App::handleClient(int client_socket)

@@ -12,12 +12,12 @@ describe('recClient', () => {
     });
 
     test('parses GET ids after the tab', async () => {
-        fake = await startFakeRecServer(() => '200 Ok\ta b c');
+        fake = await startFakeRecServer(() => '200 Ok\n\na b c');
         await expect(recClient.send('GET u m')).resolves.toEqual({ code: 200, reason: 'Ok', ids: ['a', 'b', 'c'] });
     });
 
     test('reassembles a reply split across TCP chunks', async () => {
-        fake = await startFakeRecServer(() => '200 Ok\tx y', { mode: 'split' });
+        fake = await startFakeRecServer(() => '200 Ok\n\nx y', { mode: 'split' });
         await expect(recClient.send('GET u m')).resolves.toMatchObject({ code: 200, ids: ['x', 'y'] });
     });
 
@@ -36,5 +36,27 @@ describe('recClient', () => {
     test('rejects a malformed reply', async () => {
         fake = await startFakeRecServer(() => 'garbage');
         await expect(recClient.send('GET u m')).rejects.toThrow(/Malformed/);
+    });
+});
+
+describe('recClient reply framing', () => {
+    let fake;
+    afterEach(async () => { if (fake) await fake.close(); fake = null; });
+
+    test('waits for the ids line of a GET even when it arrives later', async () => {
+        fake = await startFakeRecServer(() => '200 Ok\n\na b', { mode: 'split' });
+        await expect(recClient.send('GET u m')).resolves.toMatchObject({ code: 200, ids: ['a', 'b'] });
+    });
+
+    test('an empty GET result and a 404 GET are both single replies', async () => {
+        fake = await startFakeRecServer(line => (line === 'GET known m' ? '200 Ok\n\n' : '404 Not Found'));
+        await expect(recClient.send('GET known m')).resolves.toEqual({ code: 200, reason: 'Ok', ids: [] });
+        await expect(recClient.send('GET ghost m')).resolves.toEqual({ code: 404, reason: 'Not Found', ids: [] });
+    });
+
+    test('parseReply needs the full GET body before resolving', () => {
+        expect(recClient.parseReply('200 Ok\n\n12 1', true)).toBeNull();
+        expect(recClient.parseReply('200 Ok\n\n12 13\n', true).ids).toEqual(['12', '13']);
+        expect(recClient.parseReply('204 No Content\n', false).code).toBe(204);
     });
 });

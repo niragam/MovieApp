@@ -2,7 +2,8 @@
 
 GETCommand::GETCommand(MovieManager &manager) : manager(manager) {}
 
-// GET [userid] [movieid]: "200 Ok" plus "\t<id1> <id2> ..." when there are recommendations
+// GET [userid] [movieid]: "200 Ok", two newlines, then the recommendations separated by
+// spaces (the server adds the final newline). 404 if the user was never created.
 void GETCommand::execute(std::istringstream &input, std::ostream &output)
 {
     std::string userId, referenceMovieId, extra;
@@ -12,10 +13,16 @@ void GETCommand::execute(std::istringstream &input, std::ostream &output)
         return;
     }
 
+    if (!manager.getUser(userId))
+    {
+        output << "404 Not Found";
+        return;
+    }
+
     std::vector<std::string> recommendations = manager.recommendMovies(userId, referenceMovieId);
-    output << "200 Ok";
+    output << "200 Ok\n\n";
     for (size_t i = 0; i < recommendations.size(); ++i)
     {
-        output << (i ? " " : "\t") << recommendations[i];
+        output << (i ? " " : "") << recommendations[i];
     }
 }

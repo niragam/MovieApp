@@ -68,6 +68,36 @@ const startFakeRecServer = async (handler = () => '204 No Content', { mode = 'no
     };
 };
 
+// Handler implementing the part-2 command semantics in memory: POST only for new users,
+// PATCH/DELETE/GET only for existing ones. GET replies with `recommend(user, movie)` ids.
+const recServerSimulator = (recommend = () => []) => {
+    const users = new Map();
+    const handler = line => {
+        const [command, user, ...movies] = line.split(' ');
+        const known = users.has(user);
+        switch (command) {
+        case 'POST':
+            if (known) return '404 Not Found';
+            users.set(user, new Set(movies));
+            return '201 Created';
+        case 'PATCH':
+            if (!known) return '404 Not Found';
+            movies.forEach(m => users.get(user).add(m));
+            return '204 No Content';
+        case 'DELETE':
+            if (!known || !movies.every(m => users.get(user).has(m))) return '404 Not Found';
+            movies.forEach(m => users.get(user).delete(m));
+            return '204 No Content';
+        case 'GET':
+            if (!known) return '404 Not Found';
+            return `200 Ok\n\n${recommend(user, movies[0], users).join(' ')}`;
+        default:
+            return '400 Bad Request';
+        }
+    };
+    return { handler, users };
+};
+
 // A port with nothing listening on it (connection refused).
 const pointRecServerAtClosedPort = async () => {
     const server = net.createServer();
@@ -95,6 +125,6 @@ const auth = token => ({ Authorization: `Bearer ${token}` });
 
 module.exports = {
     startMongo, stopMongo, clearMongo,
-    startFakeRecServer, pointRecServerAtClosedPort,
+    startFakeRecServer, pointRecServerAtClosedPort, recServerSimulator,
     registerAndLogin, makeAdmin, auth,
 };

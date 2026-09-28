@@ -11,7 +11,7 @@ describe('watch and recommend through the recommendation server', () => {
 
     beforeEach(async () => {
         await h.clearMongo();
-        fake = await h.startFakeRecServer(line => (line.startsWith('GET') ? '200 Ok\tr1 r2' : '204 No Content'));
+        fake = await h.startFakeRecServer(line => (line.startsWith('GET') ? '200 Ok\n\nr1 r2' : '204 No Content'));
         admin = await h.makeAdmin(app);
         user = await h.registerAndLogin(app, 'alice');
         await request(app).post('/api/categories').set(h.auth(admin.token)).send({ name: 'Action', isPromoted: true });
@@ -84,5 +84,52 @@ describe('startup resync', () => {
         await expect(syncAllHistories()).resolves.toBe(1);
         expect(fake.received).toEqual([`PATCH ${a} ${m1} ${m2}`]);
         await fake.close();
+    });
+});
+
+describe('against a recommendation server that follows the part-2 rules', () => {
+    let fake, sim, admin, user, movies;
+
+    beforeAll(h.startMongo);
+    afterAll(h.stopMongo);
+    beforeEach(async () => {
+        await h.clearMongo();
+        sim = h.recServerSimulator();
+        fake = await h.startFakeRecServer(sim.handler);
+        admin = await h.makeAdmin(app);
+        user = await h.registerAndLogin(app, 'alice');
+        await request(app).post('/api/categories').set(h.auth(admin.token)).send({ name: 'Action', promoted: true });
+        movies = [];
+        for (const title of ['A', 'B']) {
+            const res = await request(app).post('/api/movies').set(h.auth(admin.token)).send({ title, categories: ['Action'] });
+            movies.push(res.headers.location.split('/').pop());
+        }
+    });
+    afterEach(() => fake.close());
+
+    test('first watch creates the user with POST, later watches use PATCH', async () => {
+        const first = await request(app).post(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
+        expect(first.status).toBe(204);
+        expect(fake.received).toEqual([`PATCH ${user.userId} ${movies[0]}`, `POST ${user.userId} ${movies[0]}`]);
+
+        fake.received.length = 0;
+        const second = await request(app).post(`/api/movies/${movies[1]}/recommend`).set(h.auth(user.token));
+        expect(second.status).toBe(204);
+        expect(fake.received).toEqual([`PATCH ${user.userId} ${movies[0]} ${movies[1]}`]);
+        expect([...sim.users.get(user.userId)]).toEqual([movies[0], movies[1]]);
+    });
+
+    test('recommendations for a user the server does not know are empty', async () => {
+        const res = await request(app).get(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual([]);
+    });
+
+    test('resync re-creates users the server lost', async () => {
+        await request(app).post(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
+        sim.users.clear(); // server restarted with no data
+        const { syncAllHistories } = require('../services/recSync');
+        await syncAllHistories();
+        expect([...sim.users.get(user.userId)]).toEqual([movies[0]]);
     });
 });

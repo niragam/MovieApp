@@ -186,7 +186,7 @@ describe('movies', () => {
             await newMovie({ title: 'Gone', categories: ['Action'] }),
         ];
         await request(app).delete(`/api/movies/${gone}`).set(A());
-        fake.setHandler(line => (line.startsWith('GET') ? `200 Ok\t${r2} ${gone} ${r1}` : '204 No Content'));
+        fake.setHandler(line => (line.startsWith('GET') ? `200 Ok\n\n${r2} ${gone} ${r1}` : '204 No Content'));
         const res = await request(app).get(`/api/movies/${m}/recommend`).set(U());
         expect(res.status).toBe(200);
         expect(res.body.map(movie => movie.title)).toEqual(['R2', 'R1']);
