@@ -1,6 +1,9 @@
 const User = require('../models/users');
 const jwt = require('jsonwebtoken');
-const { JWT_SECRET } = require('../auth/auth');
+const bcrypt = require('bcryptjs');
+const { getJwtSecret } = require('../auth/auth');
+
+const BCRYPT_ROUNDS = 10;
 
 const createUser = async (req, res) => {
     try {
@@ -8,6 +11,9 @@ const createUser = async (req, res) => {
 
         if (!username || !password || !name) {
             return res.status(400).json({ error: 'Missing required fields' });
+        }
+        if (typeof username !== 'string' || typeof password !== 'string' || typeof name !== 'string') {
+            return res.status(400).json({ error: 'username, password and name must be strings' });
         }
 
         // Validate username: min 3 chars, letters/numbers/underscores only
@@ -27,7 +33,7 @@ const createUser = async (req, res) => {
 
         const user = new User({
             username,
-            password,
+            password: await bcrypt.hash(password, BCRYPT_ROUNDS),
             name
         });
 
@@ -70,8 +76,8 @@ const loginUser = async (req, res) => {
             return res.status(400).json({ error: 'Missing credentials' });
         }
 
-        const user = await User.findOne({ username });
-        if (!user || user.password !== password) {
+        const user = typeof username === 'string' ? await User.findOne({ username }) : null;
+        if (!user || typeof password !== 'string' || !(await bcrypt.compare(password, user.password))) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
@@ -82,7 +88,7 @@ const loginUser = async (req, res) => {
                 username: user.username,
                 role: user.role
             },
-            JWT_SECRET,
+            getJwtSecret(),
             { expiresIn: '24h' }
         );
 

@@ -1,6 +1,14 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+// No fallback: a secret committed to the repository would let anyone mint admin tokens.
+// server.js refuses to start without JWT_SECRET.
+const getJwtSecret = () => {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+        throw new Error('JWT_SECRET is not set');
+    }
+    return secret;
+};
 
 const auth = (req, res, next) => {
     const authHeader = req.header('Authorization');
@@ -12,7 +20,7 @@ const auth = (req, res, next) => {
     const token = authHeader.substring(7);
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, getJwtSecret());
         req.userId = decoded.userId;
         req.username = decoded.username;
         req.userRole = decoded.role;
@@ -31,4 +39,4 @@ const adminAuth = (req, res, next) => {
     });
 };
 
-module.exports = { auth, adminAuth, JWT_SECRET };
+module.exports = { auth, adminAuth, getJwtSecret };

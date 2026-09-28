@@ -9,8 +9,7 @@ services:
     image: mongo:latest
     container_name: mongo-netflix
     restart: always
-    ports:
-      - "27017:27017"
+    # Not published to the host: only the API needs MongoDB (seeding uses docker exec).
     volumes:
       - mongodb_data:/data/db
     networks:
@@ -27,6 +26,7 @@ services:
       MONGO_URI: mongodb://mongodb:27017/netflix
       RECSERVER_HOST: recserver
       RECSERVER_PORT: 8000
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (see .env.example)}
     volumes:
       - ./src:/app/src
     networks:
@@ -40,8 +40,7 @@ services:
       context: .
       dockerfile: Dockerfile.recserver
     container_name: recserver
-    ports:
-      - "8000:8000"
+    # Not published to the host: the protocol has no authentication, so only the API may reach it.
     volumes:
       - recserver_data:/app/data
     networks:
