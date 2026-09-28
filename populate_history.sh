@@ -38,7 +38,7 @@ login() {
 # 1. Login as Admin to get token for fetching movies
 # -----------------------------------------------------------------------------
 echo "Logging in as admin to fetch movie list..."
-ADMIN_TOKEN=$(login "admin" "Admin123!")
+ADMIN_TOKEN=$(login "admin" "admin")
 
 if [ -z "$ADMIN_TOKEN" ]; then
     echo "Failed to login as admin. Ensure the database is seeded."
@@ -49,10 +49,10 @@ fi
 # 2. Fetch all movies
 # -----------------------------------------------------------------------------
 echo "Fetching movie list..."
-MOVIES_JSON=$(curl -s "$API_URL/movies" -H "Authorization: Bearer $ADMIN_TOKEN")
+MOVIES_JSON=$(curl -s "$API_URL/movies/all" -H "Authorization: Bearer $ADMIN_TOKEN")
 
 # Parse movie IDs using python for robustness
-# API returns [{"category": "Name", "movies": [...]}, ...]
+# The admin endpoint returns a flat list of movies
 if command_exists python3; then
     MOVIE_IDS=($(echo "$MOVIES_JSON" | python3 -c "
 import sys, json
@@ -98,7 +98,7 @@ USERS=(
     "jane_smith:Password2"
     "movie_fan:Movies123"
     "cinephile:Cinema99"
-    "admin:Admin123!"
+    "admin:admin"
 )
 
 echo "Generating watch history..."

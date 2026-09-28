@@ -81,7 +81,7 @@ Or run `./start.sh`, which does all of the above (it creates `.env` with a rando
 
 Only the API is published to the host (port 3000). MongoDB and the recommendation server are reachable only inside the Docker network. Their data lives in the named volumes `mongodb_data` and `recserver_data`.
 
-Sample accounts after seeding: `admin / Admin123!`, `john_doe / Password1`, `jane_smith / Password2`, `movie_fan / Movies123`, `cinephile / Cinema99`.
+Sample accounts after seeding: `admin / admin`, `john_doe / Password1`, `jane_smith / Password2`, `movie_fan / Movies123`, `cinephile / Cinema99`.
 
 ### Upgrading an existing database
 

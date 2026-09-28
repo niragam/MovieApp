@@ -58,7 +58,8 @@ echo "Creating users..."
 
 # Admin user
 echo -n "   Creating admin user... "
-ADMIN_RESULT=$(api_call POST "/users" '{"username": "admin", "password": "Admin123!", "name": "Administrator"}')
+ADMIN_SETUP_PASSWORD=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+ADMIN_RESULT=$(api_call POST "/users" "{\"username\": \"admin\", \"password\": \"$ADMIN_SETUP_PASSWORD\", \"name\": \"Administrator\"}")
 if echo "$ADMIN_RESULT" | grep -q "error"; then
     echo "(may already exist)"
 else
@@ -87,36 +88,35 @@ done
 echo ""
 
 # -----------------------------------------------------------------------------
-# Login as Admin and get token
+# Set admin role and password
 # -----------------------------------------------------------------------------
-echo "Logging in as admin..."
-LOGIN_RESULT=$(api_call POST "/tokens" '{"username": "admin", "password": "Admin123!"}')
-ADMIN_TOKEN=$(echo "$LOGIN_RESULT" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+echo "Setting admin role and password..."
+docker exec -i web-ser node <<'NODE'
+const mongoose = require('mongoose');
+const User = require('/app/src/apiServer/models/users');
+const { hashPassword } = require('/app/src/apiServer/services/passwords');
 
+(async () => {
+    await mongoose.connect(process.env.MONGO_URI);
+    const result = await User.updateOne(
+        { username: 'admin' },
+        { $set: { role: 'admin', password: await hashPassword('admin') } }
+    );
+    if (result.matchedCount !== 1) throw new Error('Admin user was not created');
+})().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
+}).finally(() => mongoose.disconnect());
+NODE
+
+# Login as admin to get a token with the admin role
+LOGIN_RESULT=$(api_call POST "/tokens" '{"username": "admin", "password": "admin"}')
+ADMIN_TOKEN=$(echo "$LOGIN_RESULT" | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || true)
 if [ -z "$ADMIN_TOKEN" ]; then
     echo "   Failed to login as admin. Error: $LOGIN_RESULT"
-    echo "   You may need to manually set admin role in MongoDB:"
-    echo '      db.users.updateOne({username: "admin"}, {$set: {role: "admin"}})'
     exit 1
 fi
 echo "   Admin logged in successfully"
-echo ""
-
-# -----------------------------------------------------------------------------
-# Set admin role in MongoDB (via docker exec)
-# -----------------------------------------------------------------------------
-echo "Setting admin role..."
-docker exec mongo-netflix mongosh netflix --quiet --eval '
-db.users.updateOne(
-    { username: "admin" },
-    { $set: { role: "admin" } }
-)
-' 2>/dev/null || echo "   Could not set admin role automatically"
-
-# Re-login to get updated token with admin role
-LOGIN_RESULT=$(api_call POST "/tokens" '{"username": "admin", "password": "Admin123!"}')
-ADMIN_TOKEN=$(echo "$LOGIN_RESULT" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-echo "   Admin role configured"
 echo ""
 
 # -----------------------------------------------------------------------------
@@ -212,7 +212,7 @@ echo "   • 10 categories"
 echo "   • 20 movies"
 echo ""
 echo "Test accounts:"
-echo "   Admin:    admin / Admin123!"
+echo "   Admin:    admin / admin"
 echo "   User 1:   john_doe / Password1"
 echo "   User 2:   jane_smith / Password2"
 echo "   User 3:   movie_fan / Movies123"

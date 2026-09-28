@@ -25,10 +25,12 @@ const MovieDetailsModal = ({ movie, onClose }: MovieDetailsModalProps) => {
     const onCloseRef = useRef(onClose);
     const navigate = useNavigate();
     const currentId = current.id;
+    // Tie recommendations to the selected movie while a new request is pending.
     const loading = recs?.id !== currentId;
     const recommendations = recs?.id === currentId ? recs.movies : [];
 
     useEffect(() => {
+        // Keep the Escape listener stable while using the latest close callback.
         onCloseRef.current = onClose;
     }, [onClose]);
 

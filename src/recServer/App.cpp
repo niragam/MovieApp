@@ -98,6 +98,7 @@ void App::acceptMultipleClients(struct sockaddr_in &address)
             }
             continue;
         }
+        // Prevent an idle client from holding a worker indefinitely.
         timeval timeout{CLIENT_RECEIVE_TIMEOUT_SECONDS, 0};
         setsockopt(new_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
         pool.addTask(new_socket);
@@ -151,6 +152,7 @@ void App::handleClient(int client_socket)
     char chunk[4096];
     while (true)
     {
+        // The buffer may contain several requests or only part of one.
         size_t newline;
         while ((newline = buffer.find('\n')) != std::string::npos)
         {
