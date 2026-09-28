@@ -1,17 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getMovies } from '../services/api';
 import TopNav from '../components/TopNav';
+import HeroPlayer from '../components/HeroPlayer';
 import CategoryRow from '../components/CategoryRow';
 import MovieDetailsModal from '../components/MovieDetailsModal';
-import type { Movie } from '../types';
+import type { HomeRow, Movie } from '../types';
 
-interface CategoryData {
-    category: string;
-    movies: Movie[];
-}
+const HISTORY_ROW = 'Watch History';
 
 const BrowsePage = () => {
-    const [categories, setCategories] = useState<CategoryData[]>([]);
+    const navigate = useNavigate();
+    const [categories, setCategories] = useState<HomeRow[]>([]);
     const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -24,8 +24,7 @@ const BrowsePage = () => {
         try {
             setLoading(true);
             setError(null);
-            const data = await getMovies() as unknown as CategoryData[];
-            setCategories(data);
+            setCategories(await getMovies());
         } catch (err) {
             setError((err as Error).message || 'Failed to load movies');
         } finally {
@@ -33,9 +32,19 @@ const BrowsePage = () => {
         }
     };
 
-    const handleMovieClick = (movie: Movie) => {
+    const handleMovieClick = useCallback((movie: Movie) => {
         setSelectedMovie(movie);
-    };
+    }, []);
+
+    const closeModal = useCallback(() => setSelectedMovie(null), []);
+
+    // Featured movie: a random pick from the promoted rows, chosen once per load
+    const featured = useMemo(() => {
+        const candidates = categories
+            .filter(row => row.category !== HISTORY_ROW)
+            .flatMap(row => row.movies);
+        return candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : null;
+    }, [categories]);
 
     if (loading) {
         return (
@@ -80,8 +89,16 @@ const BrowsePage = () => {
         <div className="min-h-screen bg-gray-900">
             <TopNav />
 
+            {featured && (
+                <HeroPlayer
+                    movie={featured}
+                    onPlayClick={movie => navigate(`/watch/${movie.id}`)}
+                    onInfoClick={handleMovieClick}
+                />
+            )}
+
             {/* Category Rows */}
-            <div className="pt-24 pb-16">
+            <div className={featured ? 'relative z-10 -mt-16 pb-16' : 'pt-24 pb-16'}>
                 {categories.map((category, index) => (
                     <CategoryRow
                         key={category.category || index}
@@ -101,8 +118,9 @@ const BrowsePage = () => {
             {/* Movie Details Modal */}
             {selectedMovie && (
                 <MovieDetailsModal
+                    key={selectedMovie.id}
                     movie={selectedMovie}
-                    onClose={() => setSelectedMovie(null)}
+                    onClose={closeModal}
                 />
             )}
         </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+// Shapes returned by the API. Component prop types live next to their components.
 
 // ============ USER TYPES ============
 
@@ -6,28 +6,45 @@ export interface User {
     userId: string;
     username: string;
     name: string;
+    avatarUrl?: string | null;
     role: 'user' | 'admin';
 }
 
-export interface LoginResponse {
+export interface LoginResponse extends User {
     token: string;
-    userId: string;
-    username: string;
-    name: string;
-    role: 'user' | 'admin';
 }
 
 // ============ MOVIE TYPES ============
 
 export interface Movie {
-    _id: string;
-    id?: string; // Support for alternate ID field if present
+    id: string;
     title: string;
+    description?: string | null;
+    categories: string[];
+    releaseDate?: string | null;
+    releaseYear?: number | null;
+    duration?: number | null;
+    posterUrl?: string | null;
+    backdropUrl?: string | null;
+    videoUrl?: string | null;
+}
+
+// Fields accepted when creating or replacing a movie (categories by name)
+export interface MovieInput {
+    title: string;
+    categories: string[];
     description?: string;
     duration?: number;
-    releaseYear?: number;
-    categories?: string[];
+    releaseDate?: string;
+    posterUrl?: string;
+    backdropUrl?: string;
     videoUrl?: string;
+}
+
+// One row of the homepage (GET /api/movies)
+export interface HomeRow {
+    category: string;
+    movies: Movie[];
 }
 
 // ============ CATEGORY TYPES ============
@@ -36,7 +53,6 @@ export interface Category {
     _id: string;
     name: string;
     isPromoted: boolean;
-    movies: Movie[];
 }
 
 // ============ CONTEXT TYPES ============
@@ -48,52 +64,4 @@ export interface AuthContextType {
     isAuthenticated: boolean;
     isAdmin: boolean;
     loading: boolean;
-}
-
-// ============ COMPONENT PROPS ============
-
-export interface ChildrenProps {
-    children: React.ReactNode;
-}
-
-export interface MovieCardProps {
-    movie: Movie;
-    onClick?: () => void;
-}
-
-export interface CategoryRowProps {
-    category: Category;
-    onMovieClick: (movie: Movie) => void;
-}
-
-export interface HeroPlayerProps {
-    movie: Movie | null;
-    onPlay: (movie: Movie) => void;
-    onMoreInfo: (movie: Movie) => void;
-}
-
-export interface MovieDetailsModalProps {
-    movie: Movie | null;
-    isOpen: boolean;
-    onClose: () => void;
-    onPlay: (movie: Movie) => void;
-}
-
-export interface ConfirmDialogProps {
-    isOpen: boolean;
-    title: string;
-    message: string;
-    confirmText?: string;
-    cancelText?: string;
-    onConfirm: () => void;
-    onCancel: () => void;
-    variant?: 'danger' | 'warning' | 'info';
-}
-
-// ============ API TYPES ============
-
-export interface ApiResponse<T = unknown> {
-    data?: T;
-    error?: string;
-    success?: boolean;
 }

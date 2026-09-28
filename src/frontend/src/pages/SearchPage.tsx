@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { searchMovies } from '../services/api';
 import TopNav from '../components/TopNav';
@@ -9,31 +9,25 @@ import type { Movie } from '../types';
 const SearchPage = () => {
     const [searchParams] = useSearchParams();
     const query = searchParams.get('q') || '';
-    const [results, setResults] = useState<Movie[]>([]);
-    const [loading, setLoading] = useState(false);
+    // Results are stored with the query they answer; anything else is still loading
+    const [fetched, setFetched] = useState<{ query: string; results: Movie[] } | null>(null);
+    const loading = !!query && fetched?.query !== query;
+    const results = query && fetched?.query === query ? fetched.results : [];
     const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+    const closeModal = useCallback(() => setSelectedMovie(null), []);
 
+    // Only the latest query's results are shown, even if responses arrive out of order
     useEffect(() => {
-        if (query) {
-            performSearch();
-        } else {
-            setResults([]);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        if (!query) return;
+        let cancelled = false;
+        searchMovies(query)
+            .then(data => { if (!cancelled) setFetched({ query, results: data }); })
+            .catch(err => {
+                console.error('Search failed:', err);
+                if (!cancelled) setFetched({ query, results: [] });
+            });
+        return () => { cancelled = true; };
     }, [query]);
-
-    const performSearch = async () => {
-        setLoading(true);
-        try {
-            const data = await searchMovies(query);
-            setResults(data);
-        } catch (err) {
-            console.error('Search failed:', err);
-            setResults([]);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     return (
         <div className="min-h-screen bg-gray-900">
@@ -67,7 +61,7 @@ const SearchPage = () => {
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                         {results.map((movie) => (
                             <MovieCard
-                                key={movie._id}
+                                key={movie.id}
                                 movie={movie}
                                 onClick={() => setSelectedMovie(movie)}
                             />
@@ -113,8 +107,9 @@ const SearchPage = () => {
             {/* Movie Details Modal */}
             {selectedMovie && (
                 <MovieDetailsModal
+                    key={selectedMovie.id}
                     movie={selectedMovie}
-                    onClose={() => setSelectedMovie(null)}
+                    onClose={closeModal}
                 />
             )}
         </div>

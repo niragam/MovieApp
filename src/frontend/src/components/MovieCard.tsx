@@ -7,19 +7,17 @@ interface MovieCardProps {
     onClick?: () => void;
 }
 
-
+// Shown when a movie has no poster (or the poster fails to load)
+const PLACEHOLDER_POSTER = 'https://placehold.co/400x600/1a1a1a/e50914?text=Movie+Poster';
 
 const MovieCard = ({ movie, onClick }: MovieCardProps) => {
     const [isHovered, setIsHovered] = useState(false);
     const navigate = useNavigate();
 
-    // Placeholder image URL
-    const placeholderImage = 'https://placehold.co/400x600/1a1a1a/e50914?text=Movie+Poster';
-
+    // The player records the view, so every way of starting playback counts
     const handlePlayClick = (e: MouseEvent<HTMLButtonElement>) => {
         e.stopPropagation(); // Prevent triggering the card's onClick
-        const movieId = movie._id || (movie as Movie & { id?: string }).id;
-        navigate(`/watch/${movieId}`);
+        navigate(`/watch/${movie.id}`);
     };
 
     return (
@@ -33,10 +31,14 @@ const MovieCard = ({ movie, onClick }: MovieCardProps) => {
             <div className={`relative aspect-[2/3] rounded-lg overflow-hidden bg-gray-800 shadow-lg`}>
                 {/* Poster Image */}
                 <img
-                    src={placeholderImage}
+                    src={movie.posterUrl || PLACEHOLDER_POSTER}
                     alt={movie.title}
                     className="absolute inset-0 w-full h-full object-cover"
                     loading="lazy"
+                    onError={(e) => {
+                        const img = e.currentTarget;
+                        if (img.src !== PLACEHOLDER_POSTER) img.src = PLACEHOLDER_POSTER;
+                    }}
                 />
 
                 {/* Gradient overlay */}
@@ -63,15 +65,14 @@ const MovieCard = ({ movie, onClick }: MovieCardProps) => {
                 </div>
 
                 {/* Duration badge */}
-                {movie.duration && (
+                {movie.duration ? (
                     <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs text-white z-30">
                         {movie.duration} min
                     </div>
-                )}
+                ) : null}
             </div>
         </div>
     );
 };
 
 export default MovieCard;
-

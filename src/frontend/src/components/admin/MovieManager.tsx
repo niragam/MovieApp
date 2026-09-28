@@ -1,13 +1,7 @@
 import { useState, useEffect, type FormEvent, type ChangeEvent } from 'react';
-import { getCategories, getMovies, createMovie, updateMovie, deleteMovie } from '../../services/api';
+import { getCategories, getAllMovies, createMovie, updateMovie, deleteMovie } from '../../services/api';
 import ConfirmDialog from '../ConfirmDialog';
-import type { Category, Movie } from '../../types';
-
-interface MovieWithCategory extends Movie {
-    id?: string;
-    categoryName?: string;
-    releaseDate?: string;
-}
+import type { Category, Movie, MovieInput } from '../../types';
 
 interface FormData {
     title: string;
@@ -15,6 +9,9 @@ interface FormData {
     duration: string;
     releaseDate: string;
     categories: string[];
+    posterUrl: string;
+    backdropUrl: string;
+    videoUrl: string;
 }
 
 interface DeleteConfirmState {
@@ -23,25 +20,31 @@ interface DeleteConfirmState {
     title: string;
 }
 
-interface CategoryWithMovies {
-    category: string;
-    movies: MovieWithCategory[];
-}
+const EMPTY_FORM: FormData = {
+    title: '',
+    description: '',
+    duration: '',
+    releaseDate: '',
+    categories: [],
+    posterUrl: '',
+    backdropUrl: '',
+    videoUrl: '',
+};
+
+const URL_FIELDS = [
+    { key: 'posterUrl', label: 'Poster URL', placeholder: 'https://.../poster.jpg' },
+    { key: 'backdropUrl', label: 'Backdrop URL', placeholder: 'https://.../backdrop.jpg' },
+    { key: 'videoUrl', label: 'Video URL', placeholder: 'https://.../movie.mp4' },
+] as const;
 
 const MovieManager = () => {
-    const [movies, setMovies] = useState<MovieWithCategory[]>([]);
+    const [movies, setMovies] = useState<Movie[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showForm, setShowForm] = useState(false);
-    const [editingMovie, setEditingMovie] = useState<MovieWithCategory | null>(null);
-    const [formData, setFormData] = useState<FormData>({
-        title: '',
-        description: '',
-        duration: '',
-        releaseDate: '',
-        categories: [],
-    });
+    const [editingMovie, setEditingMovie] = useState<Movie | null>(null);
+    const [formData, setFormData] = useState<FormData>(EMPTY_FORM);
     const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>({ isOpen: false, id: null, title: '' });
     const [actionLoading, setActionLoading] = useState(false);
 
@@ -49,18 +52,15 @@ const MovieManager = () => {
         fetchData();
     }, []);
 
+    // Every movie (not the personalised homepage sample), so all of them can be managed
     const fetchData = async () => {
         try {
             setLoading(true);
             const [moviesData, categoriesData] = await Promise.all([
-                getMovies(),
+                getAllMovies(),
                 getCategories(),
             ]);
-            // Flatten movies from categories
-            const allMovies = (moviesData as unknown as CategoryWithMovies[]).flatMap(cat =>
-                (cat.movies || []).map(m => ({ ...m, categoryName: cat.category }))
-            );
-            setMovies(allMovies);
+            setMovies(moviesData);
             setCategories(categoriesData);
         } catch (err) {
             setError((err as Error).message);
@@ -70,13 +70,7 @@ const MovieManager = () => {
     };
 
     const resetForm = () => {
-        setFormData({
-            title: '',
-            description: '',
-            duration: '',
-            releaseDate: '',
-            categories: [],
-        });
+        setFormData(EMPTY_FORM);
         setEditingMovie(null);
         setShowForm(false);
     };
@@ -90,15 +84,18 @@ const MovieManager = () => {
 
         setActionLoading(true);
         try {
-            const movieData = {
+            const movieData: MovieInput = {
                 title: formData.title,
                 categories: formData.categories,
                 description: formData.description || undefined,
                 duration: formData.duration ? parseInt(formData.duration) : undefined,
                 releaseDate: formData.releaseDate || undefined,
+                posterUrl: formData.posterUrl.trim() || undefined,
+                backdropUrl: formData.backdropUrl.trim() || undefined,
+                videoUrl: formData.videoUrl.trim() || undefined,
             };
 
-            if (editingMovie?.id) {
+            if (editingMovie) {
                 await updateMovie(editingMovie.id, movieData);
             } else {
                 await createMovie(movieData);
@@ -112,20 +109,23 @@ const MovieManager = () => {
         }
     };
 
-    const handleEdit = (movie: MovieWithCategory) => {
+    const handleEdit = (movie: Movie) => {
         setEditingMovie(movie);
         setFormData({
             title: movie.title,
             description: movie.description || '',
             duration: movie.duration?.toString() || '',
             releaseDate: movie.releaseDate ? movie.releaseDate.split('T')[0] : '',
-            categories: movie.categories || [],
+            categories: movie.categories,
+            posterUrl: movie.posterUrl || '',
+            backdropUrl: movie.backdropUrl || '',
+            videoUrl: movie.videoUrl || '',
         });
         setShowForm(true);
     };
 
-    const handleDeleteClick = (movie: MovieWithCategory) => {
-        setDeleteConfirm({ isOpen: true, id: movie.id || movie._id, title: movie.title });
+    const handleDeleteClick = (movie: Movie) => {
+        setDeleteConfirm({ isOpen: true, id: movie.id, title: movie.title });
     };
 
     const handleDeleteConfirm = async () => {
@@ -258,6 +258,21 @@ const MovieManager = () => {
                         </div>
                     </div>
 
+                    <div className="grid md:grid-cols-3 gap-4 mb-4">
+                        {URL_FIELDS.map(field => (
+                            <div key={field.key}>
+                                <label className="block text-sm text-gray-400 mb-2">{field.label}</label>
+                                <input
+                                    type="url"
+                                    value={formData[field.key]}
+                                    onChange={(e: ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, [field.key]: e.target.value })}
+                                    className="input-field"
+                                    placeholder={field.placeholder}
+                                />
+                            </div>
+                        ))}
+                    </div>
+
                     <div className="flex gap-2">
                         <button type="submit" disabled={actionLoading} className="btn-primary">
                             {actionLoading ? 'Saving...' : editingMovie ? 'Update Movie' : 'Add Movie'}
@@ -272,7 +287,7 @@ const MovieManager = () => {
             {/* Movies Grid */}
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {movies.map((movie) => (
-                    <div key={movie.id || movie._id} className="glass rounded-lg p-4 hover:bg-white/5 transition-colors">
+                    <div key={movie.id} className="glass rounded-lg p-4 hover:bg-white/5 transition-colors">
                         <h3 className="text-lg font-semibold text-white mb-2">{movie.title}</h3>
 
                         {movie.description && (
@@ -280,15 +295,23 @@ const MovieManager = () => {
                         )}
 
                         <div className="flex flex-wrap gap-2 mb-4 text-xs">
-                            {movie.duration && (
+                            {movie.duration ? (
                                 <span className="bg-white/10 px-2 py-1 rounded text-gray-300">
                                     {movie.duration} min
                                 </span>
-                            )}
-                            {movie.releaseDate && (
+                            ) : null}
+                            {movie.releaseYear ? (
                                 <span className="bg-white/10 px-2 py-1 rounded text-gray-300">
-                                    {new Date(movie.releaseDate).getFullYear()}
+                                    {movie.releaseYear}
                                 </span>
+                            ) : null}
+                            {movie.categories.map(category => (
+                                <span key={category} className="bg-white/10 px-2 py-1 rounded text-gray-400">
+                                    {category}
+                                </span>
+                            ))}
+                            {!movie.videoUrl && (
+                                <span className="bg-yellow-600/30 px-2 py-1 rounded text-yellow-300">no video</span>
                             )}
                         </div>
 

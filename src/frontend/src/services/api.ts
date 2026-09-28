@@ -1,7 +1,10 @@
 /* eslint-disable no-undef */
-import type { User, LoginResponse, Movie, Category } from '../types';
+import type { User, LoginResponse, Movie, MovieInput, Category, HomeRow } from '../types';
 
 const API_BASE = '/api';
+
+// Fired when the server rejects our token (expired or invalid); AuthContext listens for it.
+export const AUTH_LOGOUT_EVENT = 'auth:logout';
 
 // Helper to get auth headers
 const getAuthHeaders = (): Record<string, string> => {
@@ -20,7 +23,13 @@ const apiRequest = async <T = unknown>(endpoint: string, options: RequestInit = 
         },
     });
 
-    // Handle non-JSON responses
+    // A 401 anywhere except the login call means the session is no longer valid
+    if (response.status === 401 && endpoint !== '/tokens') {
+        logout();
+        window.dispatchEvent(new Event(AUTH_LOGOUT_EVENT));
+    }
+
+    // Handle non-JSON responses (e.g. 204 No Content)
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
         if (!response.ok) {
@@ -40,10 +49,10 @@ const apiRequest = async <T = unknown>(endpoint: string, options: RequestInit = 
 
 // ============ AUTH ============
 
-export const register = async (username: string, password: string, name: string): Promise<User> => {
+export const register = async (username: string, password: string, name: string, avatarUrl?: string): Promise<User> => {
     return apiRequest<User>('/users', {
         method: 'POST',
-        body: JSON.stringify({ username, password, name }),
+        body: JSON.stringify({ username, password, name, avatarUrl: avatarUrl || undefined }),
     });
 };
 
@@ -55,12 +64,14 @@ export const login = async (username: string, password: string): Promise<LoginRe
 
     if (data.token) {
         localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify({
+        const user: User = {
             userId: data.userId,
             username: data.username,
             name: data.name,
+            avatarUrl: data.avatarUrl ?? null,
             role: data.role,
-        }));
+        };
+        localStorage.setItem('user', JSON.stringify(user));
     }
 
     return data;
@@ -72,23 +83,28 @@ export const logout = (): void => {
 };
 
 export const getCurrentUser = (): User | null => {
-    const user = localStorage.getItem('user');
-    return user ? JSON.parse(user) : null;
+    try {
+        const user = localStorage.getItem('user');
+        return user ? JSON.parse(user) : null;
+    } catch {
+        return null;
+    }
 };
 
 export const getToken = (): string | null => {
     return localStorage.getItem('token');
 };
 
-export const isAdmin = (): boolean => {
-    const user = getCurrentUser();
-    return user?.role === 'admin';
-};
-
 // ============ MOVIES ============
 
-export const getMovies = async (): Promise<Movie[]> => {
-    return apiRequest<Movie[]>('/movies');
+// Homepage rows: promoted categories plus the user's watch history
+export const getMovies = async (): Promise<HomeRow[]> => {
+    return apiRequest<HomeRow[]>('/movies');
+};
+
+// Every movie (admin only)
+export const getAllMovies = async (): Promise<Movie[]> => {
+    return apiRequest<Movie[]>('/movies/all');
 };
 
 export const getMovie = async (id: string): Promise<Movie> => {
@@ -99,26 +115,28 @@ export const searchMovies = async (query: string): Promise<Movie[]> => {
     return apiRequest<Movie[]>(`/movies/search/${encodeURIComponent(query)}`);
 };
 
+// Records that the current user watched this movie
 export const watchMovie = async (id: string): Promise<{ success: boolean }> => {
     return apiRequest<{ success: boolean }>(`/movies/${id}/recommend`, {
         method: 'POST',
     });
 };
 
+// Up to 10 recommended movies for the current user, based on this movie
 export const getRecommendations = async (id: string): Promise<Movie[]> => {
     return apiRequest<Movie[]>(`/movies/${id}/recommend`);
 };
 
 // Admin movie operations
-export const createMovie = async (movieData: Partial<Movie>): Promise<Movie> => {
-    return apiRequest<Movie>('/movies', {
+export const createMovie = async (movieData: MovieInput): Promise<{ id: string }> => {
+    return apiRequest<{ id: string }>('/movies', {
         method: 'POST',
         body: JSON.stringify(movieData),
     });
 };
 
-export const updateMovie = async (id: string, movieData: Partial<Movie>): Promise<Movie> => {
-    return apiRequest<Movie>(`/movies/${id}`, {
+export const updateMovie = async (id: string, movieData: MovieInput): Promise<{ success: boolean }> => {
+    return apiRequest<{ success: boolean }>(`/movies/${id}`, {
         method: 'PUT',
         body: JSON.stringify(movieData),
     });
@@ -136,10 +154,6 @@ export const getCategories = async (): Promise<Category[]> => {
     return apiRequest<Category[]>('/categories');
 };
 
-export const getCategory = async (id: string): Promise<Category> => {
-    return apiRequest<Category>(`/categories/${id}`);
-};
-
 // Admin category operations
 export const createCategory = async (name: string, isPromoted: boolean = false): Promise<Category> => {
     return apiRequest<Category>('/categories', {
@@ -148,8 +162,8 @@ export const createCategory = async (name: string, isPromoted: boolean = false):
     });
 };
 
-export const updateCategory = async (id: string, name: string, isPromoted: boolean): Promise<Category> => {
-    return apiRequest<Category>(`/categories/${id}`, {
+export const updateCategory = async (id: string, name: string, isPromoted: boolean): Promise<{ success: boolean }> => {
+    return apiRequest<{ success: boolean }>(`/categories/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ name, isPromoted }),
     });

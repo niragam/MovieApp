@@ -1,6 +1,6 @@
 import { useState, useRef, type FormEvent, type ChangeEvent } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 
 const TopNav = () => {
     const { user, logout, isAdmin } = useAuth();
@@ -104,9 +104,17 @@ const TopNav = () => {
                                     onClick={() => setShowDropdown(!showDropdown)}
                                     className="flex items-center space-x-2 p-2 rounded hover:bg-white/10 transition-colors"
                                 >
-                                    <div className="w-8 h-8 rounded bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center text-white font-semibold text-sm">
-                                        {user?.name?.charAt(0).toUpperCase() || 'U'}
-                                    </div>
+                                    {user?.avatarUrl ? (
+                                        <img
+                                            src={user.avatarUrl}
+                                            alt={user.name}
+                                            className="w-8 h-8 rounded object-cover"
+                                        />
+                                    ) : (
+                                        <div className="w-8 h-8 rounded bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center text-white font-semibold text-sm">
+                                            {user?.name?.charAt(0).toUpperCase() || 'U'}
+                                        </div>
+                                    )}
                                     <svg className={`w-4 h-4 text-gray-300 transition-transform hidden md:block ${showDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                     </svg>

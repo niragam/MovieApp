@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type MouseEvent, type ChangeEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getMovie } from '../services/api';
+import { getMovie, watchMovie } from '../services/api';
 import type { Movie } from '../types';
 import type { VendorDocument, VendorElement } from '../types/vendor';
 
@@ -20,16 +20,26 @@ const VideoPlayer = () => {
     const videoContainerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const controlsTimeoutRef = useRef<number | null>(null);
+    // Mirrors isPlaying for timers, which would otherwise see a stale value
+    const isPlayingRef = useRef(isPlaying);
+    // The movie id whose view was already recorded (StrictMode runs effects twice)
+    const recordedIdRef = useRef<string | null>(null);
 
     useEffect(() => {
+        isPlayingRef.current = isPlaying;
         if (videoRef.current) {
             if (isPlaying) {
-                videoRef.current.play().catch(() => { });
+                // Browsers may block autoplay with sound; reflect that in the UI
+                videoRef.current.play().catch(() => setIsPlaying(false));
             } else {
                 videoRef.current.pause();
             }
         }
-    }, [isPlaying]);
+    }, [isPlaying, movie]);
+
+    useEffect(() => () => {
+        if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    }, []);
 
     useEffect(() => {
         if (videoRef.current) {
@@ -83,6 +93,12 @@ const VideoPlayer = () => {
         try {
             const data = await getMovie(id);
             setMovie(data);
+            // Opening the player is what counts as watching: record it once per movie.
+            // A failure only affects history/recommendations, never playback.
+            if (recordedIdRef.current !== id) {
+                recordedIdRef.current = id;
+                watchMovie(id).catch(err => console.error('Failed to record the view:', err));
+            }
         } catch (err) {
             console.error('Failed to load movie:', err);
         } finally {
@@ -96,7 +112,7 @@ const VideoPlayer = () => {
             clearTimeout(controlsTimeoutRef.current);
         }
         controlsTimeoutRef.current = window.setTimeout(() => {
-            if (isPlaying) setShowControls(false);
+            if (isPlayingRef.current) setShowControls(false);
         }, 3000);
     };
 
@@ -178,6 +194,16 @@ const VideoPlayer = () => {
         );
     }
 
+    if (!movie || !movie.videoUrl) {
+        return (
+            <div className="fixed inset-0 bg-black flex flex-col items-center justify-center gap-6 px-4 text-center">
+                <h1 className="text-3xl font-bold text-white">{movie ? movie.title : 'Movie not found'}</h1>
+                <p className="text-gray-400">{movie ? 'No video is available for this movie yet.' : 'This movie does not exist.'}</p>
+                <button onClick={handleBack} className="btn-primary px-6 py-3">Go back</button>
+            </div>
+        );
+    }
+
     return (
         <div
             ref={videoContainerRef}
@@ -185,14 +211,10 @@ const VideoPlayer = () => {
             onMouseMove={handleMouseMove}
             onClick={togglePlayPause}
         >
-            {/* Placeholder video player */}
             <video
                 ref={videoRef}
-                className="absolute inset-0 w-full h-full object-cover"
-                src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-                autoPlay={isPlaying}
-                muted={false}
-                loop
+                className="absolute inset-0 w-full h-full object-contain"
+                src={movie.videoUrl}
                 playsInline
                 onLoadedMetadata={(e) => {
                     const video = e.target as HTMLVideoElement;

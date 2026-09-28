@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Movie } from '../types';
+import { pickGradient } from '../utils/gradient';
 
 interface HeroPlayerProps {
     movie: Movie | null;
@@ -7,28 +8,13 @@ interface HeroPlayerProps {
     onInfoClick: (movie: Movie) => void;
 }
 
-// Generate a consistent gradient based on movie title
-const getGradient = (title: string = ''): string => {
-    const gradients = [
-        'from-red-900 via-red-700 to-orange-600',
-        'from-blue-900 via-blue-700 to-purple-600',
-        'from-green-900 via-green-700 to-teal-600',
-        'from-purple-900 via-purple-700 to-pink-600',
-        'from-indigo-900 via-indigo-700 to-blue-600',
-    ];
-
-    let hash = 0;
-    for (let i = 0; i < title.length; i++) {
-        hash = ((hash << 5) - hash) + title.charCodeAt(i);
-        hash = hash & hash;
-    }
-
-    return gradients[Math.abs(hash) % gradients.length];
-};
-
-interface CategoryItem {
-    name?: string;
-}
+const GRADIENTS = [
+    'from-red-900 via-red-700 to-orange-600',
+    'from-blue-900 via-blue-700 to-purple-600',
+    'from-green-900 via-green-700 to-teal-600',
+    'from-purple-900 via-purple-700 to-pink-600',
+    'from-indigo-900 via-indigo-700 to-blue-600',
+] as const;
 
 const HeroPlayer = ({ movie, onPlayClick, onInfoClick }: HeroPlayerProps) => {
     const [isLoaded, setIsLoaded] = useState(false);
@@ -49,8 +35,11 @@ const HeroPlayer = ({ movie, onPlayClick, onInfoClick }: HeroPlayerProps) => {
 
     return (
         <div className="relative h-[70vh] md:h-[85vh] overflow-hidden">
-            {/* Background gradient (simulating video) */}
-            <div className={`absolute inset-0 bg-gradient-to-br ${getGradient(movie.title)} transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
+            {/* Backdrop artwork, or a gradient when the movie has none */}
+            <div className={`absolute inset-0 bg-gradient-to-br ${pickGradient(movie.title, GRADIENTS)} transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
+                {movie.backdropUrl && (
+                    <img src={movie.backdropUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                )}
                 {/* Animated overlay to simulate video movement */}
                 <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9InJnYmEoMjU1LDI1NSwyNTUsMC4wNSkiLz48c3RvcCBvZmZzZXQ9IjUwJSIgc3RvcC1jb2xvcj0icmdiYSgyNTUsMjU1LDI1NSwwKSIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IGZpbGw9InVybCgjZykiIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIi8+PC9zdmc+')] opacity-30"></div>
             </div>
@@ -76,17 +65,13 @@ const HeroPlayer = ({ movie, onPlayClick, onInfoClick }: HeroPlayerProps) => {
 
                     {/* Meta info */}
                     <div className="flex flex-wrap items-center gap-4 mb-6 text-sm text-gray-300">
-                        {movie.releaseYear && (
-                            <span>{movie.releaseYear}</span>
-                        )}
-                        {movie.duration && (
-                            <span>{movie.duration} min</span>
-                        )}
-                        {movie.categories && movie.categories.length > 0 && (
+                        {movie.releaseYear ? <span>{movie.releaseYear}</span> : null}
+                        {movie.duration ? <span>{movie.duration} min</span> : null}
+                        {movie.categories.length > 0 && (
                             <span className="flex flex-wrap gap-2">
-                                {movie.categories.slice(0, 3).map((cat: string | CategoryItem, i: number) => (
-                                    <span key={i} className="bg-white/20 px-2 py-1 rounded">
-                                        {typeof cat === 'string' ? cat : cat.name}
+                                {movie.categories.slice(0, 3).map(category => (
+                                    <span key={category} className="bg-white/20 px-2 py-1 rounded">
+                                        {category}
                                     </span>
                                 ))}
                             </span>
@@ -117,13 +102,6 @@ const HeroPlayer = ({ movie, onPlayClick, onInfoClick }: HeroPlayerProps) => {
                 </div>
             </div>
 
-            {/* Mute button (decorative) */}
-            <button className="absolute bottom-8 right-8 md:bottom-16 md:right-16 w-10 h-10 rounded-full border border-white/50 flex items-center justify-center text-white/70 hover:text-white hover:border-white transition-colors">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                </svg>
-            </button>
         </div>
     );
 };

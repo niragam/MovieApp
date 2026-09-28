@@ -1,8 +1,7 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
-import type { User, AuthContextType } from '../types';
-import { getCurrentUser, getToken, logout as apiLogout } from '../services/api';
-
-const AuthContext = createContext<AuthContextType | null>(null);
+import { useEffect, useState, type ReactNode } from 'react';
+import type { User } from '../types';
+import { AUTH_LOGOUT_EVENT, getCurrentUser, getToken, logout as apiLogout } from '../services/api';
+import { AuthContext } from './useAuth';
 
 interface AuthProviderProps {
     children: ReactNode;
@@ -14,10 +13,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const storedUser = getCurrentUser();
         return (token && storedUser) ? storedUser : null;
     });
-    // We can assume loading is false if checking synchronous storage.
+    // Session state comes from synchronous storage, so there is never a loading phase.
     const [loading] = useState(false);
 
-    // No need for useEffect to set user if we do it lazily.
+    // The API layer signals an expired/invalid token; drop the session so protected
+    // routes redirect to the login page.
+    useEffect(() => {
+        const handleForcedLogout = () => setUser(null);
+        window.addEventListener(AUTH_LOGOUT_EVENT, handleForcedLogout);
+        return () => window.removeEventListener(AUTH_LOGOUT_EVENT, handleForcedLogout);
+    }, []);
 
     const login = (userData: User) => {
         setUser(userData);
@@ -43,12 +48,4 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             {children}
         </AuthContext.Provider>
     );
-};
-
-export const useAuth = (): AuthContextType => {
-    const context = useContext(AuthContext);
-    if (!context) {
-        throw new Error('useAuth must be used within an AuthProvider');
-    }
-    return context;
 };
