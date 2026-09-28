@@ -30,10 +30,12 @@ int serverPort()
         static std::string portArg = std::to_string(chosen);
         std::thread([]
                     {
-                        static App app(serverDataFile);
+                        // Intentionally leaked: the server threads outlive main(), so the App
+                        // must never be destroyed by static destructors at exit.
+                        App *app = new App(serverDataFile);
                         static char prog[] = "movieApp";
                         char *argv[] = {prog, portArg.data(), nullptr};
-                        app.run(2, argv); })
+                        app->run(2, argv); })
             .detach();
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
         return chosen;

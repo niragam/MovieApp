@@ -8,7 +8,6 @@
 #include <cstdio>
 #include <iostream>
 
-MovieManager manager;
 // clean up the file
 void cleanUpFile(const std::string &filename)
 {
@@ -20,7 +19,7 @@ class MovieRecommenderTest : public testing::Test
 {
 protected:
     MovieManager manager; // setting up a manager
-    const std::string testFile = "../data/user_data.txt";
+    const std::string testFile = "testsMovies_user_data.txt"; // local to the test working dir
 
     void TearDown() override
     {
