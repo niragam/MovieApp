@@ -11,6 +11,16 @@ const MAX_ROW_MOVIES = 20;
 const MAX_SEARCH_RESULTS = 50;
 const CATEGORY_NAMES = { path: 'categories', select: 'name' };
 
+// Fisher-Yates shuffle (returns a new array)
+const shuffled = (items) => {
+    const result = [...items];
+    for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+};
+
 // Resolves category names to ids with one query. Returns { ids } or { missing }.
 const resolveCategoryIds = async (names) => {
     const found = await categoryModel.find({ name: { $in: names } }, { name: 1 });
@@ -107,7 +117,7 @@ const deleteMovie = async (req, res) => {
 };
 
 // Homepage: a row per promoted category (up to 20 random unwatched movies each),
-// plus the user's 20 most recently watched movies, newest first.
+// plus the user's 20 most recently watched movies in random order.
 const returnMovies = async (req, res) => {
     const user = await userModel.findById(req.userId);
     if (!user) {
@@ -131,7 +141,8 @@ const returnMovies = async (req, res) => {
         }
     }
 
-    const recentIds = watchedIds.slice(-MAX_ROW_MOVIES).reverse();
+    // The 20 most recently watched movies, in random order (as the assignment requires)
+    const recentIds = shuffled(watchedIds.slice(-MAX_ROW_MOVIES));
     const recentMovies = await movieModel.find({ _id: { $in: recentIds } }).populate(CATEGORY_NAMES);
     const byId = new Map(recentMovies.map(movie => [String(movie._id), movie]));
     const history = recentIds.map(id => byId.get(String(id))).filter(Boolean);

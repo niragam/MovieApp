@@ -33,7 +33,7 @@ A movie streaming and recommendation platform: a React frontend, a Node.js/Expre
 | Feature | Description |
 |---------|-------------|
 | **Accounts** | Registration (with optional profile image URL) and JWT login; passwords are hashed with bcrypt |
-| **Browsing** | Featured movie, one row per promoted category (up to 20 random unwatched movies), and a Watch History row (20 most recent, newest first) |
+| **Browsing** | Featured movie, one row per promoted category (up to 20 random unwatched movies), and a Watch History row (the 20 most recently watched, in random order) |
 | **Search** | Case-insensitive search over title, description, category name and release year |
 | **Playback** | Video player with play/pause, seeking, volume and fullscreen; opening the player records the view |
 | **Recommendations** | "More Like This" from the C++ engine, based on similar users' histories |
@@ -130,7 +130,7 @@ A movie is `{ id, title, description, categories: [names], releaseDate, releaseY
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/movies` | GET | user | Homepage rows: `[{ category, movies }]` for each promoted category (up to 20 random movies the user hasn't watched), plus `"Watch History"` (the 20 most recent, newest first) |
+| `/api/movies` | GET | user | Homepage rows: `[{ category, movies }]` for each promoted category (up to 20 random movies the user hasn't watched), plus `"Watch History"` (the 20 most recently watched, in random order) |
 | `/api/movies` | POST | admin | Create; `categories` is an array of category names |
 | `/api/movies/all` | GET | admin | Every movie |
 | `/api/movies/:id` | GET | none | One movie |

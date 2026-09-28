@@ -54,14 +54,18 @@ describe('GET /api/movies (homepage) and viewing history', () => {
         expect(action).not.toContain(ids[1]);
     });
 
-    test('history row lists the 20 most recent watches, newest first', async () => {
+    test('history row holds exactly the 20 most recent watches, in random order', async () => {
         const ids = await createMovies(22, ['Drama'], 'D');
         for (const id of ids) await watch(id);
-        await watch(ids[0]); // re-watch moves it to the front
-        const history = row(await home(), 'Watch History').movies.map(m => String(m.id));
-        expect(history).toHaveLength(20);
-        expect(history[0]).toBe(ids[0]);
-        expect(history.slice(1)).toEqual(ids.slice(3).reverse());
+        await watch(ids[0]); // re-watching makes it recent again
+        const expected = [ids[0], ...ids.slice(3)].sort();
+        const orders = new Set();
+        for (let i = 0; i < 5; i++) {
+            const history = row(await home(), 'Watch History').movies.map(m => String(m.id));
+            expect([...history].sort()).toEqual(expected);
+            orders.add(history.join(','));
+        }
+        expect(orders.size).toBeGreaterThan(1); // shuffled, not a fixed order
     });
 
     test('no history row before the user watches anything', async () => {
