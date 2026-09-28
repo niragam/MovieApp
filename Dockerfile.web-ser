@@ -11,4 +11,4 @@ COPY src/ ./src/
 # Expose the port
 EXPOSE 3000
 
-CMD ["node", "src/apiServer/app.js"]
+CMD ["node", "src/apiServer/server.js"]
