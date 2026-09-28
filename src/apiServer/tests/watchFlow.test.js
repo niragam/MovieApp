@@ -125,6 +125,39 @@ describe('against a recommendation server that follows the part-2 rules', () => 
         expect(res.body).toEqual([]);
     });
 
+    const pending = () => mongoose.connection.db.collection('pendingrecdeletes').find().toArray();
+
+    test('a movie deleted while the server is down is removed once it is back (resync)', async () => {
+        await request(app).post(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
+        await request(app).post(`/api/movies/${movies[1]}/recommend`).set(h.auth(user.token));
+        const port = process.env.RECSERVER_PORT;
+
+        await h.pointRecServerAtClosedPort();
+        expect((await request(app).delete(`/api/movies/${movies[1]}`).set(h.auth(admin.token))).status).toBe(204);
+        expect(await pending()).toHaveLength(1);
+        expect(sim.users.get(user.userId).has(movies[1])).toBe(true); // stale watch
+
+        process.env.RECSERVER_PORT = port;
+        const { syncAllHistories } = require('../services/recSync');
+        await syncAllHistories();
+        expect(sim.users.get(user.userId).has(movies[1])).toBe(false);
+        expect(await pending()).toHaveLength(0);
+    });
+
+    test("the user's next watch also flushes their pending removals", async () => {
+        await request(app).post(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
+        await request(app).post(`/api/movies/${movies[1]}/recommend`).set(h.auth(user.token));
+        const port = process.env.RECSERVER_PORT;
+        await h.pointRecServerAtClosedPort();
+        await request(app).delete(`/api/movies/${movies[1]}`).set(h.auth(admin.token));
+        process.env.RECSERVER_PORT = port;
+
+        const res = await request(app).post(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
+        expect(res.status).toBe(204);
+        expect([...sim.users.get(user.userId)]).toEqual([movies[0]]);
+        expect(await pending()).toHaveLength(0);
+    });
+
     test('resync re-creates users the server lost', async () => {
         await request(app).post(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
         sim.users.clear(); // server restarted with no data

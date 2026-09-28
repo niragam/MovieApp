@@ -3,7 +3,7 @@ const movieModel = require('../models/movies');
 const categoryModel = require('../models/categories');
 const userModel = require('../models/users');
 const recClient = require('../services/recClient');
-const { syncUserHistory, historyIds } = require('../services/recSync');
+const { syncUserHistory, historyIds, removeWatch, flushPendingDeletes } = require('../services/recSync');
 const { toMovieDto } = require('../services/movieDto');
 const { escapeRegex } = require('../services/validation');
 
@@ -98,14 +98,10 @@ const deleteMovie = async (req, res) => {
     );
     await movieModel.findByIdAndDelete(movieId);
 
-    // MongoDB is the source of truth; if the recommendation server is unreachable,
-    // the startup resync (services/recSync.js) repairs it later.
+    // MongoDB is the source of truth. Removals the recommendation server doesn't confirm
+    // are stored and retried (at startup and on the user's next watch).
     for (const watcher of watchers) {
-        try {
-            await recClient.send(`DELETE ${watcher._id} ${movieId}`);
-        } catch (error) {
-            console.error(`Could not remove movie ${movieId} for user ${watcher._id}:`, error.message);
-        }
+        await removeWatch(watcher._id, movieId);
     }
     res.status(204).end();
 };
@@ -178,6 +174,7 @@ const watchMovie = async (req, res) => {
     // Send the user's full history (adding already-known movies is harmless), which also
     // repairs any earlier divergence between MongoDB and the recommendation server.
     try {
+        await flushPendingDeletes(userId);
         const reply = await syncUserHistory(userId, historyIds(user));
         if (reply.code !== 204 && reply.code !== 201) {
             console.error(`Recommendation server rejected the update: ${reply.code} ${reply.reason}`);
