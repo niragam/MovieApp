@@ -6,12 +6,10 @@ const app = require('../app');
 let fake, admin, user;
 const A = () => h.auth(admin.token);
 const U = () => h.auth(user.token);
-const newCategory = (name, isPromoted = true) =>
-    request(app).post('/api/categories').set(A()).send({ name, isPromoted });
-const newMovie = async (body) => {
-    const res = await request(app).post('/api/movies').set(A()).send(body);
-    return res.body.id;
-};
+const newCategory = (name, promoted = true) =>
+    request(app).post('/api/categories').set(A()).send({ name, promoted });
+const idFrom = res => res.headers.location.split('/').pop();
+const newMovie = async (body) => idFrom(await request(app).post('/api/movies').set(A()).send(body));
 
 beforeAll(h.startMongo);
 afterAll(h.stopMongo);
@@ -24,7 +22,8 @@ beforeEach(async () => {
 afterEach(() => fake.close());
 
 describe('error handling and validation', () => {
-    test('invalid ids are 400 on every :id route', async () => {
+    // As in the assignment's example (GET /api/categories/foo -> 404 Category not found)
+    test('invalid ids are 404 on every :id route', async () => {
         const cases = [
             request(app).get('/api/users/nope').set(U()),
             request(app).get('/api/categories/nope'),
@@ -37,9 +36,10 @@ describe('error handling and validation', () => {
             request(app).post('/api/movies/nope/recommend').set(U()),
         ];
         for (const res of await Promise.all(cases)) {
-            expect(res.status).toBe(400);
-            expect(res.body.error).toMatch(/Invalid id/);
+            expect(res.status).toBe(404);
+            expect(res.body.error).toMatch(/^(User|Category|Movie) not found$/);
         }
+        expect((await request(app).get('/api/categories/foo')).body).toEqual({ error: 'Category not found' });
     });
 
     test('well-formed but unknown ids are 404', async () => {
@@ -101,32 +101,48 @@ describe('users', () => {
 });
 
 describe('categories', () => {
-    test('create returns 201 with Location and body; list and get work', async () => {
+    // Matches the assignment's curl examples
+    test('create is 201 with Location and no body; list and get return {id, name, promoted}', async () => {
         const res = await newCategory('Action');
         expect(res.status).toBe(201);
-        expect(res.headers.location).toBe(`/api/categories/${res.body._id}`);
-        expect((await request(app).get('/api/categories')).body.map(c => c.name)).toEqual(['Action']);
-        expect((await request(app).get(`/api/categories/${res.body._id}`)).body.isPromoted).toBe(true);
+        expect(res.headers.location).toMatch(/^\/api\/categories\/[0-9a-f]{24}$/);
+        expect(res.text).toBe('');
+        const id = idFrom(res);
+        expect((await request(app).get('/api/categories')).body).toEqual([{ id, name: 'Action', promoted: true }]);
+        expect((await request(app).get(`/api/categories/${id}`)).body).toEqual({ id, name: 'Action', promoted: true });
+    });
+
+    test('missing name is 400 "Name is required"', async () => {
+        const res = await request(app).post('/api/categories').set(A()).send({ promoted: false });
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({ error: 'Name is required' });
+    });
+
+    test('promoted migration renames the old field', async () => {
+        await mongoose.connection.db.collection('categories').insertOne({ name: 'Old', isPromoted: true });
+        const { migrate } = require('../scripts/migrate-category-promoted');
+        expect(await migrate(mongoose.connection.db)).toBe(1);
+        expect((await request(app).get('/api/categories')).body[0]).toMatchObject({ name: 'Old', promoted: true });
     });
 
     test('names must be non-empty and unique, including on rename', async () => {
         expect((await request(app).post('/api/categories').set(A()).send({ name: '  ' })).status).toBe(400);
-        const a = (await newCategory('Action')).body._id;
+        const a = idFrom(await newCategory('Action'));
         await newCategory('Drama');
         expect((await newCategory('Action')).status).toBe(409);
         expect((await request(app).patch(`/api/categories/${a}`).set(A()).send({ name: '' })).status).toBe(400);
         expect((await request(app).patch(`/api/categories/${a}`).set(A()).send({ name: 'Drama' })).status).toBe(409);
-        expect((await request(app).patch(`/api/categories/${a}`).set(A()).send({ isPromoted: 'yes' })).status).toBe(400);
+        expect((await request(app).patch(`/api/categories/${a}`).set(A()).send({ promoted: 'yes' })).status).toBe(400);
     });
 
     test('PATCH is partial', async () => {
-        const id = (await newCategory('Action', false)).body._id;
-        expect((await request(app).patch(`/api/categories/${id}`).set(A()).send({ isPromoted: true })).status).toBe(204);
-        expect((await request(app).get(`/api/categories/${id}`)).body).toMatchObject({ name: 'Action', isPromoted: true });
+        const id = idFrom(await newCategory('Action', false));
+        expect((await request(app).patch(`/api/categories/${id}`).set(A()).send({ promoted: true })).status).toBe(204);
+        expect((await request(app).get(`/api/categories/${id}`)).body).toMatchObject({ name: 'Action', promoted: true });
     });
 
     test('deleting a category removes it from movies', async () => {
-        const drama = (await newCategory('Drama')).body._id;
+        const drama = idFrom(await newCategory('Drama'));
         await newCategory('Action');
         const movie = await newMovie({ title: 'Both', categories: ['Drama', 'Action'] });
         expect((await request(app).delete(`/api/categories/${drama}`).set(A())).status).toBe(204);
@@ -145,9 +161,10 @@ describe('movies', () => {
             posterUrl: 'https://img/p.jpg', backdropUrl: 'https://img/b.jpg', videoUrl: 'https://vid/v.mp4'
         });
         expect(res.status).toBe(201);
-        const movie = (await request(app).get(`/api/movies/${res.body.id}`)).body;
+        expect(res.text).toBe('');
+        const movie = (await request(app).get(`/api/movies/${idFrom(res)}`)).body;
         expect(movie).toMatchObject({
-            id: res.body.id, title: 'Film', categories: ['Action'], releaseYear: 1999, duration: 120,
+            id: idFrom(res), title: 'Film', categories: ['Action'], releaseYear: 1999, duration: 120,
             posterUrl: 'https://img/p.jpg', backdropUrl: 'https://img/b.jpg', videoUrl: 'https://vid/v.mp4'
         });
     });

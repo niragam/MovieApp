@@ -85,11 +85,12 @@ Sample accounts after seeding: `admin / Admin123!`, `john_doe / Password1`, `jan
 
 ### Upgrading an existing database
 
-Older versions stored passwords in plaintext and watch history as plain id strings. To migrate:
+Older versions stored passwords in plaintext, watch history as plain id strings, and the category flag as `isPromoted`. To migrate:
 
 ```bash
 MONGO_URI=mongodb://localhost:27017/netflix node src/apiServer/scripts/hash-passwords.js
 MONGO_URI=mongodb://localhost:27017/netflix node src/apiServer/scripts/migrate-watch-history.js
+MONGO_URI=mongodb://localhost:27017/netflix node src/apiServer/scripts/migrate-category-promoted.js
 ```
 
 ---
@@ -97,10 +98,10 @@ MONGO_URI=mongodb://localhost:27017/netflix node src/apiServer/scripts/migrate-w
 ## API Reference
 
 All responses with a body are JSON. Errors look like `{ "error": "..." }`.
-- 400: invalid input, malformed JSON or an invalid id
+- 400: invalid input or malformed JSON
 - 401: missing or invalid token
 - 403: not an admin
-- 404: not found
+- 404: not found (an id that isn't a valid id is also 404, e.g. `GET /api/categories/foo`)
 - 409: duplicate
 - 502/503: the recommendation server failed or is unavailable
 
@@ -118,10 +119,10 @@ Authenticated routes need `Authorization: Bearer <token>`.
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/categories` | GET | none | All categories (`_id`, `name`, `isPromoted`) |
-| `/api/categories` | POST | admin | Create `{ name, isPromoted? }`. Names are unique |
+| `/api/categories` | GET | none | All categories: `[{ id, name, promoted }]` |
+| `/api/categories` | POST | admin | Create `{ name, promoted? }` (names are unique); 201 with `Location` and no body |
 | `/api/categories/:id` | GET | none | One category |
-| `/api/categories/:id` | PATCH | admin | Partial update of `name` / `isPromoted` |
+| `/api/categories/:id` | PATCH | admin | Partial update of `name` / `promoted` |
 | `/api/categories/:id` | DELETE | admin | Delete (also removed from movies) |
 
 ### Movies

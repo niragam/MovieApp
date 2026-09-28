@@ -27,8 +27,8 @@ describe('GET /api/movies (homepage) and viewing history', () => {
         fake = await h.startFakeRecServer();
         admin = await h.makeAdmin(app);
         user = await h.registerAndLogin(app, 'viewer');
-        await request(app).post('/api/categories').set(h.auth(admin.token)).send({ name: 'Action', isPromoted: true });
-        await request(app).post('/api/categories').set(h.auth(admin.token)).send({ name: 'Drama', isPromoted: false });
+        await request(app).post('/api/categories').set(h.auth(admin.token)).send({ name: 'Action', promoted: true });
+        await request(app).post('/api/categories').set(h.auth(admin.token)).send({ name: 'Drama', promoted: false });
     });
     afterEach(() => fake.close());
 

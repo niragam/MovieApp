@@ -61,7 +61,7 @@ const createMovie = async (req, res) => {
         return res.status(error[0]).json({ error: error[1] });
     }
     const movie = await movieModel.create(fields);
-    res.status(201).location(`/api/movies/${movie._id}`).json({ id: movie._id });
+    res.status(201).location(`/api/movies/${movie._id}`).end();
 };
 
 const getMovie = async (req, res) => {
@@ -127,7 +127,7 @@ const returnMovies = async (req, res) => {
     // ObjectIds with ObjectIds.
     const watchedIds = user.watchHistory.map(entry => entry.movieId);
 
-    const promoted = await categoryModel.find({ isPromoted: true });
+    const promoted = await categoryModel.find({ promoted: true });
     const result = [];
 
     for (const category of promoted) {

@@ -128,8 +128,8 @@ export const getRecommendations = async (id: string): Promise<Movie[]> => {
 };
 
 // Admin movie operations
-export const createMovie = async (movieData: MovieInput): Promise<{ id: string }> => {
-    return apiRequest<{ id: string }>('/movies', {
+export const createMovie = async (movieData: MovieInput): Promise<{ success: boolean }> => {
+    return apiRequest<{ success: boolean }>('/movies', {
         method: 'POST',
         body: JSON.stringify(movieData),
     });
@@ -155,17 +155,17 @@ export const getCategories = async (): Promise<Category[]> => {
 };
 
 // Admin category operations
-export const createCategory = async (name: string, isPromoted: boolean = false): Promise<Category> => {
-    return apiRequest<Category>('/categories', {
+export const createCategory = async (name: string, promoted: boolean = false): Promise<{ success: boolean }> => {
+    return apiRequest<{ success: boolean }>('/categories', {
         method: 'POST',
-        body: JSON.stringify({ name, isPromoted }),
+        body: JSON.stringify({ name, promoted }),
     });
 };
 
-export const updateCategory = async (id: string, name: string, isPromoted: boolean): Promise<{ success: boolean }> => {
+export const updateCategory = async (id: string, name: string, promoted: boolean): Promise<{ success: boolean }> => {
     return apiRequest<{ success: boolean }>(`/categories/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ name, isPromoted }),
+        body: JSON.stringify({ name, promoted }),
     });
 };
 

@@ -243,7 +243,7 @@ const MovieManager = () => {
                             <div className="flex flex-wrap gap-2">
                                 {categories.map((cat) => (
                                     <button
-                                        key={cat._id}
+                                        key={cat.id}
                                         type="button"
                                         onClick={() => toggleCategory(cat.name)}
                                         className={`px-3 py-1 rounded-full text-sm transition-colors ${formData.categories.includes(cat.name)

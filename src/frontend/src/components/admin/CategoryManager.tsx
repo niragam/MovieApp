@@ -5,7 +5,7 @@ import type { Category } from '../../types';
 
 interface NewCategory {
     name: string;
-    isPromoted: boolean;
+    promoted: boolean;
 }
 
 interface DeleteConfirmState {
@@ -20,8 +20,8 @@ const CategoryManager = () => {
     const [error, setError] = useState<string | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
-    const [editIsPromoted, setEditIsPromoted] = useState(false);
-    const [newCategory, setNewCategory] = useState<NewCategory>({ name: '', isPromoted: false });
+    const [editPromoted, setEditPromoted] = useState(false);
+    const [newCategory, setNewCategory] = useState<NewCategory>({ name: '', promoted: false });
     const [showAddForm, setShowAddForm] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>({ isOpen: false, id: null, name: '' });
     const [actionLoading, setActionLoading] = useState(false);
@@ -48,8 +48,8 @@ const CategoryManager = () => {
 
         setActionLoading(true);
         try {
-            await createCategory(newCategory.name, newCategory.isPromoted);
-            setNewCategory({ name: '', isPromoted: false });
+            await createCategory(newCategory.name, newCategory.promoted);
+            setNewCategory({ name: '', promoted: false });
             setShowAddForm(false);
             fetchCategories();
         } catch (err) {
@@ -60,9 +60,9 @@ const CategoryManager = () => {
     };
 
     const handleEdit = (category: Category) => {
-        setEditingId(category._id);
+        setEditingId(category.id);
         setEditName(category.name);
-        setEditIsPromoted(category.isPromoted || false);
+        setEditPromoted(category.promoted || false);
     };
 
     const handleSaveEdit = async () => {
@@ -70,7 +70,7 @@ const CategoryManager = () => {
 
         setActionLoading(true);
         try {
-            await updateCategory(editingId, editName, editIsPromoted);
+            await updateCategory(editingId, editName, editPromoted);
             setEditingId(null);
             fetchCategories();
         } catch (err) {
@@ -81,7 +81,7 @@ const CategoryManager = () => {
     };
 
     const handleDeleteClick = (category: Category) => {
-        setDeleteConfirm({ isOpen: true, id: category._id, name: category.name });
+        setDeleteConfirm({ isOpen: true, id: category.id, name: category.name });
     };
 
     const handleDeleteConfirm = async () => {
@@ -143,8 +143,8 @@ const CategoryManager = () => {
                         <label className="flex items-center gap-2 text-white">
                             <input
                                 type="checkbox"
-                                checked={newCategory.isPromoted}
-                                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewCategory({ ...newCategory, isPromoted: e.target.checked })}
+                                checked={newCategory.promoted}
+                                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewCategory({ ...newCategory, promoted: e.target.checked })}
                                 className="w-4 h-4 rounded"
                             />
                             Promoted
@@ -177,9 +177,9 @@ const CategoryManager = () => {
                     </thead>
                     <tbody>
                         {categories.map((category) => (
-                            <tr key={category._id} className="border-b border-white/5 hover:bg-white/5">
+                            <tr key={category.id} className="border-b border-white/5 hover:bg-white/5">
                                 <td className="p-4">
-                                    {editingId === category._id ? (
+                                    {editingId === category.id ? (
                                         <input
                                             type="text"
                                             value={editName}
@@ -191,21 +191,21 @@ const CategoryManager = () => {
                                     )}
                                 </td>
                                 <td className="p-4">
-                                    {editingId === category._id ? (
+                                    {editingId === category.id ? (
                                         <input
                                             type="checkbox"
-                                            checked={editIsPromoted}
-                                            onChange={(e: ChangeEvent<HTMLInputElement>) => setEditIsPromoted(e.target.checked)}
+                                            checked={editPromoted}
+                                            onChange={(e: ChangeEvent<HTMLInputElement>) => setEditPromoted(e.target.checked)}
                                             className="w-4 h-4 rounded"
                                         />
                                     ) : (
-                                        <span className={`px-2 py-1 rounded text-xs ${category.isPromoted ? 'bg-green-600/30 text-green-400' : 'bg-gray-600/30 text-gray-400'}`}>
-                                            {category.isPromoted ? 'Yes' : 'No'}
+                                        <span className={`px-2 py-1 rounded text-xs ${category.promoted ? 'bg-green-600/30 text-green-400' : 'bg-gray-600/30 text-gray-400'}`}>
+                                            {category.promoted ? 'Yes' : 'No'}
                                         </span>
                                     )}
                                 </td>
                                 <td className="p-4 text-right">
-                                    {editingId === category._id ? (
+                                    {editingId === category.id ? (
                                         <div className="flex gap-2 justify-end">
                                             <button
                                                 onClick={handleSaveEdit}

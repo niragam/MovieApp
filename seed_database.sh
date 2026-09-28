@@ -125,16 +125,16 @@ echo ""
 echo "Creating categories..."
 
 CATEGORIES=(
-    '{"name": "Action", "isPromoted": true}'
-    '{"name": "Comedy", "isPromoted": true}'
-    '{"name": "Drama", "isPromoted": true}'
-    '{"name": "Sci-Fi", "isPromoted": true}'
-    '{"name": "Horror", "isPromoted": false}'
-    '{"name": "Romance", "isPromoted": false}'
-    '{"name": "Thriller", "isPromoted": true}'
-    '{"name": "Documentary", "isPromoted": false}'
-    '{"name": "Animation", "isPromoted": true}'
-    '{"name": "Fantasy", "isPromoted": false}'
+    '{"name": "Action", "promoted": true}'
+    '{"name": "Comedy", "promoted": true}'
+    '{"name": "Drama", "promoted": true}'
+    '{"name": "Sci-Fi", "promoted": true}'
+    '{"name": "Horror", "promoted": false}'
+    '{"name": "Romance", "promoted": false}'
+    '{"name": "Thriller", "promoted": true}'
+    '{"name": "Documentary", "promoted": false}'
+    '{"name": "Animation", "promoted": true}'
+    '{"name": "Fantasy", "promoted": false}'
 )
 
 for category in "${CATEGORIES[@]}"; do

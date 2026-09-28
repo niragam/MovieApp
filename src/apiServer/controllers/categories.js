@@ -1,20 +1,23 @@
 const category = require('../models/categories');
 const movieModel = require('../models/movies');
 
+// API shape of a category (as in the assignment's examples)
+const toCategoryDto = c => ({ id: c._id, name: c.name, promoted: c.promoted });
+
 // Validates the writable fields. With `partial`, omitted fields are allowed (PATCH).
-const parseCategoryBody = ({ name, isPromoted }, { partial }) => {
+const parseCategoryBody = ({ name, promoted }, { partial }) => {
     const fields = {};
     if (name !== undefined || !partial) {
         if (typeof name !== 'string' || !name.trim()) {
-            return { error: 'Name is required and must be a non-empty string' };
+            return { error: 'Name is required' };
         }
         fields.name = name.trim();
     }
-    if (isPromoted !== undefined) {
-        if (typeof isPromoted !== 'boolean') {
-            return { error: 'isPromoted must be a boolean' };
+    if (promoted !== undefined) {
+        if (typeof promoted !== 'boolean') {
+            return { error: 'promoted must be a boolean' };
         }
-        fields.isPromoted = isPromoted;
+        fields.promoted = promoted;
     }
     if (partial && Object.keys(fields).length === 0) {
         return { error: 'Nothing to update' };
@@ -23,7 +26,7 @@ const parseCategoryBody = ({ name, isPromoted }, { partial }) => {
 };
 
 const getCategories = async (req, res) => {
-    res.status(200).json(await category.find().sort({ name: 1 }));
+    res.status(200).json((await category.find().sort({ name: 1 })).map(toCategoryDto));
 };
 
 const createCategory = async (req, res) => {
@@ -36,7 +39,7 @@ const createCategory = async (req, res) => {
     }
     // A concurrent duplicate still hits the unique index -> 409 via the error handler
     const newCategory = await category.create(fields);
-    res.status(201).location(`/api/categories/${newCategory._id}`).json(newCategory);
+    res.status(201).location(`/api/categories/${newCategory._id}`).end();
 };
 
 const getCategory = async (req, res) => {
@@ -44,7 +47,7 @@ const getCategory = async (req, res) => {
     if (!foundCategory) {
         return res.status(404).json({ error: 'Category not found' });
     }
-    res.status(200).json(foundCategory);
+    res.status(200).json(toCategoryDto(foundCategory));
 };
 
 const updateCategory = async (req, res) => {

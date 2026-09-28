@@ -14,7 +14,7 @@ describe('watch and recommend through the recommendation server', () => {
         fake = await h.startFakeRecServer(line => (line.startsWith('GET') ? '200 Ok\n\nr1 r2' : '204 No Content'));
         admin = await h.makeAdmin(app);
         user = await h.registerAndLogin(app, 'alice');
-        await request(app).post('/api/categories').set(h.auth(admin.token)).send({ name: 'Action', isPromoted: true });
+        await request(app).post('/api/categories').set(h.auth(admin.token)).send({ name: 'Action', promoted: true });
         const created = await request(app).post('/api/movies').set(h.auth(admin.token)).send({ title: 'M', categories: ['Action'] });
         movieId = created.headers.location.split('/').pop();
     });

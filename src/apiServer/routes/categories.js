@@ -5,7 +5,7 @@ const { adminAuth } = require('../auth/auth');
 const asyncHandler = require('../middleware/asyncHandler');
 const validateObjectId = require('../middleware/validateObjectId');
 
-const validId = validateObjectId('id');
+const validId = validateObjectId('Category');
 
 router.get('/', asyncHandler(categoryController.getCategories));
 router.post('/', adminAuth, asyncHandler(categoryController.createCategory));

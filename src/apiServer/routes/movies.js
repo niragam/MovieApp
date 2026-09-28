@@ -5,7 +5,7 @@ const { auth, adminAuth } = require('../auth/auth');
 const asyncHandler = require('../middleware/asyncHandler');
 const validateObjectId = require('../middleware/validateObjectId');
 
-const validId = validateObjectId('id');
+const validId = validateObjectId('Movie');
 
 // Public routes ('/search' with no query would otherwise fall through to '/:id')
 router.get('/search', movieController.rejectEmptySearch);

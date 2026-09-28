@@ -50,9 +50,9 @@ export interface HomeRow {
 // ============ CATEGORY TYPES ============
 
 export interface Category {
-    _id: string;
+    id: string;
     name: string;
-    isPromoted: boolean;
+    promoted: boolean;
 }
 
 // ============ CONTEXT TYPES ============
