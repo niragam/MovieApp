@@ -1,0 +1,167 @@
+const request = require('supertest');
+const mongoose = require('mongoose');
+const h = require('./helpers');
+const app = require('../app');
+
+describe('watch and recommend through the recommendation server', () => {
+    let fake, admin, user, movieId;
+
+    beforeAll(h.startMongo);
+    afterAll(h.stopMongo);
+
+    beforeEach(async () => {
+        await h.clearMongo();
+        fake = await h.startFakeRecServer(line => (line.startsWith('GET') ? '200 Ok\n\nr1 r2' : '204 No Content'));
+        admin = await h.makeAdmin(app);
+        user = await h.registerAndLogin(app, 'alice');
+        await request(app).post('/api/categories').set(h.auth(admin.token)).send({ name: 'Action', promoted: true });
+        const created = await request(app).post('/api/movies').set(h.auth(admin.token)).send({ title: 'M', categories: ['Action'] });
+        movieId = created.headers.location.split('/').pop();
+    });
+
+    afterEach(async () => { if (fake) await fake.close(); fake = null; });
+
+    test('registration does not contact the recommendation server', async () => {
+        expect(fake.received).toEqual([]);
+    });
+
+    test('watch sends the full history as one PATCH and returns 204', async () => {
+        const res = await request(app).post(`/api/movies/${movieId}/recommend`).set(h.auth(user.token));
+        expect(res.status).toBe(204);
+        expect(fake.received).toEqual([`PATCH ${user.userId} ${movieId}`]);
+    });
+
+    test('recommend returns the ids from the recommendation server', async () => {
+        const res = await request(app).get(`/api/movies/${movieId}/recommend`).set(h.auth(user.token));
+        expect(res.status).toBe(200);
+        expect(fake.received).toEqual([`GET ${user.userId} ${movieId}`]);
+    });
+
+    test('recommendation server down: watch is 502, recommend is 503, the API stays up', async () => {
+        await fake.close(); fake = null;
+        await h.pointRecServerAtClosedPort();
+
+        const watch = await request(app).post(`/api/movies/${movieId}/recommend`).set(h.auth(user.token));
+        expect(watch.status).toBe(502);
+        expect(watch.body.error).toMatch(/unavailable/);
+
+        const stored = await mongoose.connection.db.collection('users').findOne({ username: 'alice' });
+        expect(stored.watchHistory.map(entry => String(entry.movieId))).toEqual([movieId]);
+
+        const rec = await request(app).get(`/api/movies/${movieId}/recommend`).set(h.auth(user.token));
+        expect(rec.status).toBe(503);
+
+        const alive = await request(app).get('/api/categories');
+        expect(alive.status).toBe(200);
+    });
+
+    test('recommendation server that never replies: request completes within the timeout', async () => {
+        fake.setHandler(() => null);
+        const started = Date.now();
+        const res = await request(app).post(`/api/movies/${movieId}/recommend`).set(h.auth(user.token));
+        expect(res.status).toBe(502);
+        expect(Date.now() - started).toBeLessThan(3000);
+    });
+});
+
+describe('startup resync', () => {
+    beforeAll(h.startMongo);
+    afterAll(h.stopMongo);
+
+    test('replays every non-empty history as a PATCH', async () => {
+        await h.clearMongo();
+        const { syncAllHistories } = require('../services/recSync');
+        const users = mongoose.connection.db.collection('users');
+        const a = new mongoose.Types.ObjectId(), b = new mongoose.Types.ObjectId();
+        const m1 = new mongoose.Types.ObjectId(), m2 = new mongoose.Types.ObjectId();
+        await users.insertMany([
+            { _id: a, username: 'a', password: 'x', name: 'a', watchHistory: [
+                { movieId: m1, watchedAt: new Date(1) }, { movieId: m2, watchedAt: new Date(2) }] },
+            { _id: b, username: 'b', password: 'x', name: 'b', watchHistory: [] },
+        ]);
+        const fake = await h.startFakeRecServer();
+        await expect(syncAllHistories()).resolves.toBe(1);
+        expect(fake.received).toEqual([`PATCH ${a} ${m1} ${m2}`]);
+        await fake.close();
+    });
+});
+
+describe('against a recommendation server that follows the part-2 rules', () => {
+    let fake, sim, admin, user, movies;
+
+    beforeAll(h.startMongo);
+    afterAll(h.stopMongo);
+    beforeEach(async () => {
+        await h.clearMongo();
+        sim = h.recServerSimulator();
+        fake = await h.startFakeRecServer(sim.handler);
+        admin = await h.makeAdmin(app);
+        user = await h.registerAndLogin(app, 'alice');
+        await request(app).post('/api/categories').set(h.auth(admin.token)).send({ name: 'Action', promoted: true });
+        movies = [];
+        for (const title of ['A', 'B']) {
+            const res = await request(app).post('/api/movies').set(h.auth(admin.token)).send({ title, categories: ['Action'] });
+            movies.push(res.headers.location.split('/').pop());
+        }
+    });
+    afterEach(() => fake.close());
+
+    test('first watch creates the user with POST, later watches use PATCH', async () => {
+        const first = await request(app).post(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
+        expect(first.status).toBe(204);
+        expect(fake.received).toEqual([`PATCH ${user.userId} ${movies[0]}`, `POST ${user.userId} ${movies[0]}`]);
+
+        fake.received.length = 0;
+        const second = await request(app).post(`/api/movies/${movies[1]}/recommend`).set(h.auth(user.token));
+        expect(second.status).toBe(204);
+        expect(fake.received).toEqual([`PATCH ${user.userId} ${movies[0]} ${movies[1]}`]);
+        expect([...sim.users.get(user.userId)]).toEqual([movies[0], movies[1]]);
+    });
+
+    test('recommendations for a user the server does not know are empty', async () => {
+        const res = await request(app).get(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual([]);
+    });
+
+    const pending = () => mongoose.connection.db.collection('pendingrecdeletes').find().toArray();
+
+    test('a movie deleted while the server is down is removed once it is back (resync)', async () => {
+        await request(app).post(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
+        await request(app).post(`/api/movies/${movies[1]}/recommend`).set(h.auth(user.token));
+        const port = process.env.RECSERVER_PORT;
+
+        await h.pointRecServerAtClosedPort();
+        expect((await request(app).delete(`/api/movies/${movies[1]}`).set(h.auth(admin.token))).status).toBe(204);
+        expect(await pending()).toHaveLength(1);
+        expect(sim.users.get(user.userId).has(movies[1])).toBe(true);
+
+        process.env.RECSERVER_PORT = port;
+        const { syncAllHistories } = require('../services/recSync');
+        await syncAllHistories();
+        expect(sim.users.get(user.userId).has(movies[1])).toBe(false);
+        expect(await pending()).toHaveLength(0);
+    });
+
+    test("the user's next watch also flushes their pending removals", async () => {
+        await request(app).post(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
+        await request(app).post(`/api/movies/${movies[1]}/recommend`).set(h.auth(user.token));
+        const port = process.env.RECSERVER_PORT;
+        await h.pointRecServerAtClosedPort();
+        await request(app).delete(`/api/movies/${movies[1]}`).set(h.auth(admin.token));
+        process.env.RECSERVER_PORT = port;
+
+        const res = await request(app).post(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
+        expect(res.status).toBe(204);
+        expect([...sim.users.get(user.userId)]).toEqual([movies[0]]);
+        expect(await pending()).toHaveLength(0);
+    });
+
+    test('resync re-creates users the server lost', async () => {
+        await request(app).post(`/api/movies/${movies[0]}/recommend`).set(h.auth(user.token));
+        sim.users.clear();
+        const { syncAllHistories } = require('../services/recSync');
+        await syncAllHistories();
+        expect([...sim.users.get(user.userId)]).toEqual([movies[0]]);
+    });
+});

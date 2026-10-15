@@ -4,9 +4,12 @@ const Schema = mongoose.Schema;
 const CategorySchema = new Schema({
     name: {
         type: String,
-        required: true
+        required: true,
+        trim: true,
+        minlength: 1,
+        unique: true
     },
-    isPromoted: {
+    promoted: {
         type: Boolean,
         default: false
     }

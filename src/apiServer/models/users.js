@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { httpUrlField } = require('../services/validation');
 const Schema = mongoose.Schema;
 
 const UserSchema = new Schema({
@@ -13,8 +14,10 @@ const UserSchema = new Schema({
     },
     name: {
         type: String,
-        required: true
+        required: true,
+        trim: true
     },
+    avatarUrl: httpUrlField('avatarUrl'),
     role: {
         type: String,
         enum: ['user', 'admin'],
@@ -25,9 +28,14 @@ const UserSchema = new Schema({
         default: Date.now
     },
     watchHistory: {
-        type: Array,
+        type: [new Schema({
+            movieId: { type: Schema.Types.ObjectId, ref: 'Movie', required: true },
+            watchedAt: { type: Date, required: true }
+        }, { _id: false })],
         default: []
     }
 });
+
+UserSchema.index({ 'watchHistory.movieId': 1 });
 
 module.exports = mongoose.model('User', UserSchema);

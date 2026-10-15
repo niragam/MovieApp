@@ -68,7 +68,7 @@ const CategoryRow = ({ title, movies, onMovieClick }: CategoryRowProps) => {
                 >
                     {movies.map((movie) => (
                         <MovieCard
-                            key={movie._id}
+                            key={movie.id}
                             movie={movie}
                             onClick={() => onMovieClick(movie)}
                         />

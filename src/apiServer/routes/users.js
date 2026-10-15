@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/users');
 const { auth } = require('../auth/auth');
+const asyncHandler = require('../middleware/asyncHandler');
+const validateObjectId = require('../middleware/validateObjectId');
 
-router.post('/', userController.createUser);
-router.get('/:id', auth, userController.getUser);
-router.post('/tokens', userController.loginUser);
+router.post('/', asyncHandler(userController.createUser));
+router.get('/:id', auth, validateObjectId('User'), asyncHandler(userController.getUser));
 
 module.exports = router;

@@ -58,7 +58,8 @@ echo "Creating users..."
 
 # Admin user
 echo -n "   Creating admin user... "
-ADMIN_RESULT=$(api_call POST "/users" '{"username": "admin", "password": "Admin123!", "name": "Administrator"}')
+ADMIN_SETUP_PASSWORD=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+ADMIN_RESULT=$(api_call POST "/users" "{\"username\": \"admin\", \"password\": \"$ADMIN_SETUP_PASSWORD\", \"name\": \"Administrator\"}")
 if echo "$ADMIN_RESULT" | grep -q "error"; then
     echo "(may already exist)"
 else
@@ -87,36 +88,35 @@ done
 echo ""
 
 # -----------------------------------------------------------------------------
-# Login as Admin and get token
+# Set admin role and password
 # -----------------------------------------------------------------------------
-echo "Logging in as admin..."
-LOGIN_RESULT=$(api_call POST "/users/tokens" '{"username": "admin", "password": "Admin123!"}')
-ADMIN_TOKEN=$(echo "$LOGIN_RESULT" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+echo "Setting admin role and password..."
+docker exec -i web-ser node <<'NODE'
+const mongoose = require('mongoose');
+const User = require('/app/src/apiServer/models/users');
+const { hashPassword } = require('/app/src/apiServer/services/passwords');
 
+(async () => {
+    await mongoose.connect(process.env.MONGO_URI);
+    const result = await User.updateOne(
+        { username: 'admin' },
+        { $set: { role: 'admin', password: await hashPassword('admin') } }
+    );
+    if (result.matchedCount !== 1) throw new Error('Admin user was not created');
+})().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
+}).finally(() => mongoose.disconnect());
+NODE
+
+# Login as admin to get a token with the admin role
+LOGIN_RESULT=$(api_call POST "/tokens" '{"username": "admin", "password": "admin"}')
+ADMIN_TOKEN=$(echo "$LOGIN_RESULT" | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || true)
 if [ -z "$ADMIN_TOKEN" ]; then
     echo "   Failed to login as admin. Error: $LOGIN_RESULT"
-    echo "   You may need to manually set admin role in MongoDB:"
-    echo '      db.users.updateOne({username: "admin"}, {$set: {role: "admin"}})'
     exit 1
 fi
 echo "   Admin logged in successfully"
-echo ""
-
-# -----------------------------------------------------------------------------
-# Set admin role in MongoDB (via docker exec)
-# -----------------------------------------------------------------------------
-echo "Setting admin role..."
-docker exec mongo-netflix mongosh netflix --quiet --eval '
-db.users.updateOne(
-    { username: "admin" },
-    { $set: { role: "admin" } }
-)
-' 2>/dev/null || echo "   Could not set admin role automatically"
-
-# Re-login to get updated token with admin role
-LOGIN_RESULT=$(api_call POST "/users/tokens" '{"username": "admin", "password": "Admin123!"}')
-ADMIN_TOKEN=$(echo "$LOGIN_RESULT" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-echo "   Admin role configured"
 echo ""
 
 # -----------------------------------------------------------------------------
@@ -125,16 +125,16 @@ echo ""
 echo "Creating categories..."
 
 CATEGORIES=(
-    '{"name": "Action", "isPromoted": true}'
-    '{"name": "Comedy", "isPromoted": true}'
-    '{"name": "Drama", "isPromoted": true}'
-    '{"name": "Sci-Fi", "isPromoted": true}'
-    '{"name": "Horror", "isPromoted": false}'
-    '{"name": "Romance", "isPromoted": false}'
-    '{"name": "Thriller", "isPromoted": true}'
-    '{"name": "Documentary", "isPromoted": false}'
-    '{"name": "Animation", "isPromoted": true}'
-    '{"name": "Fantasy", "isPromoted": false}'
+    '{"name": "Action", "promoted": true}'
+    '{"name": "Comedy", "promoted": true}'
+    '{"name": "Drama", "promoted": true}'
+    '{"name": "Sci-Fi", "promoted": true}'
+    '{"name": "Horror", "promoted": false}'
+    '{"name": "Romance", "promoted": false}'
+    '{"name": "Thriller", "promoted": true}'
+    '{"name": "Documentary", "promoted": false}'
+    '{"name": "Animation", "promoted": true}'
+    '{"name": "Fantasy", "promoted": false}'
 )
 
 for category in "${CATEGORIES[@]}"; do
@@ -178,9 +178,18 @@ MOVIES=(
     '{"title": "Free Solo", "categories": ["Documentary"], "description": "A climber attempts to free solo El Capitan.", "duration": 100, "releaseDate": "2018-09-28"}'
 )
 
+VIDEO_BASE="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample"
+VIDEOS=(BigBuckBunny ElephantsDream ForBiggerBlazes ForBiggerEscapes ForBiggerFun ForBiggerJoyrides ForBiggerMeltdowns Sintel TearsOfSteel SubaruOutbackOnStreetAndDirt)
+
+index=0
 for movie in "${MOVIES[@]}"; do
     title=$(echo "$movie" | grep -o '"title": "[^"]*"' | cut -d'"' -f4)
     echo -n "   Creating movie: $title... "
+    label=$(echo "$title" | sed 's/[^A-Za-z0-9 ]//g; s/ /+/g')
+    video="$VIDEO_BASE/${VIDEOS[$((index % ${#VIDEOS[@]}))]}.mp4"
+    media="\"posterUrl\": \"https://placehold.co/400x600/141414/e50914?text=$label\", \"backdropUrl\": \"https://placehold.co/1280x720/1a1a1a/ffffff?text=$label\", \"videoUrl\": \"$video\""
+    movie="{$media, ${movie#\{}"
+    index=$((index + 1))
     RESULT=$(api_call POST "/movies" "$movie" "$ADMIN_TOKEN")
     if echo "$RESULT" | grep -q "error"; then
         echo "(may already exist or category missing)"
@@ -203,7 +212,7 @@ echo "   • 10 categories"
 echo "   • 20 movies"
 echo ""
 echo "Test accounts:"
-echo "   Admin:    admin / Admin123!"
+echo "   Admin:    admin / admin"
 echo "   User 1:   john_doe / Password1"
 echo "   User 2:   jane_smith / Password2"
 echo "   User 3:   movie_fan / Movies123"

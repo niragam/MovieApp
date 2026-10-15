@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ChangeEvent } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { login as apiLogin } from '../services/api';
 
 const LoginForm = () => {
@@ -31,6 +31,7 @@ const LoginForm = () => {
                 userId: data.userId,
                 username: data.username,
                 name: data.name,
+                avatarUrl: data.avatarUrl ?? null,
                 role: data.role,
             });
             navigate(from, { replace: true });

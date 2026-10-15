@@ -1,13 +1,18 @@
 #!/bin/bash
 
 # =============================================================================
-# restart.sh - Stop all services and restart from scratch
 # =============================================================================
 
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FRONTEND_DIR="$PROJECT_DIR/src/frontend"
+
+if ! docker info >/dev/null 2>&1; then
+    echo "Cannot access the Docker daemon. Check that Docker is running and that your user can access /var/run/docker.sock." >&2
+    echo "Socket: $(stat -c '%A %U:%G %n' /var/run/docker.sock 2>/dev/null || echo '/var/run/docker.sock unavailable')" >&2
+    exit 1
+fi
 
 echo "MovieApp Service Restart Script"
 echo "===================================="
@@ -44,8 +49,8 @@ echo ""
 echo "Stopping Docker containers..."
 cd "$PROJECT_DIR"
 
-# Force stop docker-compose services
-docker-compose down --remove-orphans 2>/dev/null || true
+# Force stop Docker Compose services
+docker compose down --remove-orphans 2>/dev/null || true
 
 # Force stop and remove containers by name pattern
 for container in mongo-netflix web-ser recserver; do
@@ -56,8 +61,7 @@ for container in mongo-netflix web-ser recserver; do
     fi
 done
 
-# Extra cleanup: stop any container using our ports
-for port in 27017 3000 8000; do
+for port in 3000; do
     CONTAINER_ID=$(docker ps -q --filter "publish=$port" 2>/dev/null || true)
     if [ -n "$CONTAINER_ID" ]; then
         echo "   Stopping container using port $port..."
@@ -74,7 +78,7 @@ echo ""
 # -----------------------------------------------------------------------------
 echo "Checking if ports are available..."
 PORTS_BLOCKED=false
-for port in 27017 3000 8000; do
+for port in 3000; do
     PORT_PID=$(lsof -ti:$port 2>/dev/null || true)
     if [ -n "$PORT_PID" ]; then
         echo "   Port $port is still in use by PID: $PORT_PID"
@@ -86,9 +90,7 @@ done
 if [ "$PORTS_BLOCKED" = true ]; then
     echo ""
     echo "   Some ports are blocked. You may need to manually stop these processes:"
-    echo "      sudo kill -9 \$(lsof -ti:27017) # for MongoDB"
     echo "      sudo kill -9 \$(lsof -ti:3000)  # for API"
-    echo "      sudo kill -9 \$(lsof -ti:8000)  # for RecServer"
     echo ""
     read -p "   Continue anyway? [y/N]: " -n 1 -r
     echo ""
@@ -105,9 +107,19 @@ echo ""
 read -p "Do you want to remove all data (fresh database)? [y/N]: " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "   Removing Docker volumes..."
-    docker volume rm asp-ex3_mongodb_data 2>/dev/null || true
+    echo "   Removing Docker volumes (MongoDB and recommendation data)..."
+    docker compose down -v 2>/dev/null || true
     echo "   Data removed - fresh start!"
+fi
+
+echo ""
+
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+if [ ! -f "$PROJECT_DIR/.env" ]; then
+    echo "No .env found - creating one with a random JWT_SECRET..."
+    SECRET=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    sed "s/^JWT_SECRET=.*/JWT_SECRET=$SECRET/" "$PROJECT_DIR/.env.example" > "$PROJECT_DIR/.env"
 fi
 
 echo ""
@@ -117,18 +129,18 @@ echo ""
 # -----------------------------------------------------------------------------
 echo "Starting Docker services..."
 cd "$PROJECT_DIR"
-docker-compose up --build -d
+docker compose up --build -d
 
 echo "   Waiting for services to be ready..."
 sleep 8
 
 # Check if services are running
-if docker-compose ps | grep -q "Up"; then
+if docker compose ps | grep -q "Up"; then
     echo "   Backend services started successfully!"
-    docker-compose ps
+    docker compose ps
 else
     echo "   Error: Some services failed to start"
-    docker-compose logs --tail=30
+    docker compose logs --tail=30
     exit 1
 fi
 
@@ -174,11 +186,10 @@ echo "Service URLs:"
 VITE_PORT=$(grep -o 'localhost:[0-9]*' /tmp/vite.log 2>/dev/null | head -1 | cut -d':' -f2 || echo "5173")
 echo "   Frontend:  http://localhost:${VITE_PORT}"
 echo "   API:       http://localhost:3000"
-echo "   MongoDB:   localhost:27017"
-echo "   RecServer: localhost:8000"
+echo "   MongoDB and RecServer are internal to the Docker network"
 echo ""
 echo "Useful commands:"
-echo "   docker-compose logs -f     # View backend logs"
+echo "   docker compose logs -f     # View backend logs"
 echo "   tail -f /tmp/vite.log      # View frontend logs"
 echo "   ./seed_database.sh         # Populate sample data"
 echo "===================================="

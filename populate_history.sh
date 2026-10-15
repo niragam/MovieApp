@@ -23,7 +23,7 @@ login() {
     local username=$1
     local password=$2
     # Login and extract token using grep/cut
-    local response=$(curl -s -X POST "$API_URL/users/tokens" \
+    local response=$(curl -s -X POST "$API_URL/tokens" \
         -H "Content-Type: application/json" \
         -d "{\"username\": \"$username\", \"password\": \"$password\"}")
     
@@ -38,7 +38,7 @@ login() {
 # 1. Login as Admin to get token for fetching movies
 # -----------------------------------------------------------------------------
 echo "Logging in as admin to fetch movie list..."
-ADMIN_TOKEN=$(login "admin" "Admin123!")
+ADMIN_TOKEN=$(login "admin" "admin")
 
 if [ -z "$ADMIN_TOKEN" ]; then
     echo "Failed to login as admin. Ensure the database is seeded."
@@ -49,10 +49,10 @@ fi
 # 2. Fetch all movies
 # -----------------------------------------------------------------------------
 echo "Fetching movie list..."
-MOVIES_JSON=$(curl -s "$API_URL/movies" -H "Authorization: Bearer $ADMIN_TOKEN")
+MOVIES_JSON=$(curl -s "$API_URL/movies/all" -H "Authorization: Bearer $ADMIN_TOKEN")
 
 # Parse movie IDs using python for robustness
-# API returns [{"category": "Name", "movies": [...]}, ...]
+# The admin endpoint returns a flat list of movies
 if command_exists python3; then
     MOVIE_IDS=($(echo "$MOVIES_JSON" | python3 -c "
 import sys, json
@@ -98,7 +98,7 @@ USERS=(
     "jane_smith:Password2"
     "movie_fan:Movies123"
     "cinephile:Cinema99"
-    "admin:Admin123!"
+    "admin:admin"
 )
 
 echo "Generating watch history..."
@@ -108,7 +108,7 @@ for u in "${USERS[@]}"; do
     echo -n "   User: $USERNAME ... "
     
     # Login and get token + userId
-    LOGIN_RES=$(curl -s -X POST "$API_URL/users/tokens" \
+    LOGIN_RES=$(curl -s -X POST "$API_URL/tokens" \
         -H "Content-Type: application/json" \
         -d "{\"username\": \"$USERNAME\", \"password\": \"$PASSWORD\"}")
     
@@ -120,15 +120,6 @@ for u in "${USERS[@]}"; do
     TOKEN=$(echo "$LOGIN_RES" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     USER_ID=$(echo "$LOGIN_RES" | grep -o '"userId":"[^"]*"' | cut -d'"' -f4)
     
-    # Sync user to RecServer (in case it restarted and lost data)
-    # Send "POST <userId> 1" to localhost 8000
-    if command_exists nc; then
-        echo "POST $USER_ID 1" | nc -w 1 localhost 8000 >/dev/null 2>&1 || true
-        # We don't need to delete the dummy movie 1 immediately, 
-        # as subsequent watches will just append. 
-        # But to be clean we could.
-    fi
-
     # Determine number of movies to watch (random between 5 and 15)
     NUM_WATCHES=$((5 + RANDOM % 11))
     

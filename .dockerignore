@@ -1,0 +1,9 @@
+.git
+node_modules
+**/node_modules
+build
+build-*
+src/frontend/dist
+data/*.txt
+data/*.tmp
+.env

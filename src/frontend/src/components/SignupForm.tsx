@@ -7,6 +7,7 @@ interface FormData {
     password: string;
     confirmPassword: string;
     name: string;
+    avatarUrl: string;
 }
 
 interface FormErrors {
@@ -14,7 +15,17 @@ interface FormErrors {
     password?: string;
     confirmPassword?: string;
     name?: string;
+    avatarUrl?: string;
 }
+
+const isHttpUrl = (value: string): boolean => {
+    try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+        return false;
+    }
+};
 
 const SignupForm = () => {
     const [formData, setFormData] = useState<FormData>({
@@ -22,6 +33,7 @@ const SignupForm = () => {
         password: '',
         confirmPassword: '',
         name: '',
+        avatarUrl: '',
     });
     const [errors, setErrors] = useState<FormErrors>({});
     const [serverError, setServerError] = useState('');
@@ -48,6 +60,9 @@ const SignupForm = () => {
                 return '';
             case 'name':
                 if (!value) return 'Display name is required';
+                return '';
+            case 'avatarUrl':
+                if (value && !isHttpUrl(value)) return 'Profile image must be an http(s) URL';
                 return '';
             default:
                 return '';
@@ -91,7 +106,7 @@ const SignupForm = () => {
         setLoading(true);
 
         try {
-            await register(formData.username, formData.password, formData.name);
+            await register(formData.username, formData.password, formData.name, formData.avatarUrl.trim());
             setSuccess(true);
             setTimeout(() => {
                 navigate('/login');
@@ -172,6 +187,33 @@ const SignupForm = () => {
                                 disabled={loading}
                             />
                             {errors.name && <p className="error-text">{errors.name}</p>}
+                        </div>
+
+                        <div>
+                            <label htmlFor="avatarUrl" className="block text-sm font-medium text-gray-300 mb-2">
+                                Profile image URL <span className="text-gray-500">(optional)</span>
+                            </label>
+                            <div className="flex items-center gap-3">
+                                <input
+                                    id="avatarUrl"
+                                    name="avatarUrl"
+                                    type="url"
+                                    value={formData.avatarUrl}
+                                    onChange={handleChange}
+                                    onBlur={handleBlur}
+                                    className={`input-field ${errors.avatarUrl ? 'input-error' : ''}`}
+                                    placeholder="https://example.com/me.png"
+                                    disabled={loading}
+                                />
+                                {formData.avatarUrl && isHttpUrl(formData.avatarUrl) && (
+                                    <img
+                                        src={formData.avatarUrl}
+                                        alt="Profile preview"
+                                        className="w-10 h-10 rounded object-cover flex-shrink-0"
+                                    />
+                                )}
+                            </div>
+                            {errors.avatarUrl && <p className="error-text">{errors.avatarUrl}</p>}
                         </div>
 
                         <div>

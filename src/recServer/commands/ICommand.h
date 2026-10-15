@@ -8,6 +8,7 @@ class ICommand {
 public:
     virtual ~ICommand() = default;
     virtual void execute(std::istringstream &input, std::ostream &output) = 0;
+    virtual bool mutates() const { return false; }
 };
 
 #endif

@@ -1,11 +1,12 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
+const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
 const userRoutes = require('./routes/users');
+const tokenRoutes = require('./routes/tokens');
 const categoryRoutes = require('./routes/categories');
 const movieRoutes = require('./routes/movies');
+const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
@@ -19,36 +20,26 @@ app.use(express.json());
 
 app.disable('etag');
 
-app.use((req, res, next) => {
-    res.removeHeader('Date');
-    next();
-});
-
 // API Routes
 app.use('/api/users', userRoutes);
+app.use('/api/tokens', tokenRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/movies', movieRoutes);
 
-// Serve static frontend files (production)
-app.use(express.static(path.join(__dirname, '../frontend/dist')));
+app.use('/api', (req, res) => {
+    res.status(404).json({ error: 'Not found' });
+});
 
-// Fallback to index.html for SPA routing
+const distDir = path.join(__dirname, '../frontend/dist');
+const indexHtml = path.join(distDir, 'index.html');
+app.use(express.static(distDir));
 app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api')) {
+    if (!fs.existsSync(indexHtml)) {
         return next();
     }
-    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+    res.sendFile(indexHtml);
 });
 
-const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/netflix';
-const port = process.env.PORT || 3000;
-mongoose.connect(mongoUri);
+app.use(errorHandler);
 
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ error: 'Something broke!' });
-});
-
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
+module.exports = app;

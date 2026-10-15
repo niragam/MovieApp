@@ -1,18 +1,21 @@
 #include "App.h"
 #include "threadpool/ThreadPool.h"
 
+#include <algorithm>
+#include <cctype>
+#include <cerrno>
+#include <csignal>
 #include <iostream>
 #include <string>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <chrono>
+#include <sys/time.h>
 #include <thread>
 #include <vector>
 
-const std::string App::dataFile = "data/user_data.txt";
-int server_fd;
-
-App::App()
+App::App(std::string dataFile) : dataFile(std::move(dataFile))
 {
     // Register commands for handling HTTP-like requests (POST, PATCH, GET, DELETE, help)
     commands["POST"] = std::make_unique<POSTCommand>(manager);
@@ -28,6 +31,7 @@ int App::run(int argc, char **argv)
     {
         return 1;  // Return error if not
     }
+    std::signal(SIGPIPE, SIG_IGN);
     try
     {
         int port = std::stoi(argv[1]);  // Convert the port argument to an integer
@@ -37,7 +41,7 @@ int App::run(int argc, char **argv)
         {
             return 1;  // Return error if server initialization fails
         }
-        acceptMultipleClients(server_fd, address);  // Start accepting clients
+        acceptMultipleClients(address);  // Start accepting clients
 
         return 0;  // Success
     }
@@ -50,7 +54,7 @@ int App::run(int argc, char **argv)
 // Initializes the server socket and binds it to the specified address and port
 int App::initServer(int port, struct sockaddr_in &address)
 {
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)  // Create the socket
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)  // Create the socket
     {
         return 1;  // Return error code if socket creation fails
     }
@@ -76,73 +80,119 @@ int App::initServer(int port, struct sockaddr_in &address)
     return 0;  // Success
 }
 
-// Accepts multiple client connections and creates a new thread for each client
-void App::acceptMultipleClients(int server_fd, struct sockaddr_in &address)
+static const int CLIENT_RECEIVE_TIMEOUT_SECONDS = 30;
+
+void App::acceptMultipleClients(struct sockaddr_in &address)
 {
-    int new_socket;
-    int addrlen = sizeof(address);
-    // create a thread pool to handle client connections according to the number of threads in the system
-    ThreadPool pool(std::thread::hardware_concurrency(), [this](int client_socket) { handleClient(client_socket); });
+    socklen_t addrlen = sizeof(address);
+    size_t workers = std::max(1u, std::thread::hardware_concurrency());
+    ThreadPool pool(workers, [this](int client_socket) { handleClient(client_socket); });
     while (true)
     {
-        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
+        int new_socket = accept(server_fd, (struct sockaddr *)&address, &addrlen);
+        if (new_socket < 0)
         {
-            continue;  // If accepting the client fails, try again
+            if (errno == EMFILE || errno == ENFILE)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            continue;
         }
-        pool.addTask(new_socket);  // Add the client socket to the thread pool    
+        // Prevent an idle client from holding a worker indefinitely.
+        timeval timeout{CLIENT_RECEIVE_TIMEOUT_SECONDS, 0};
+        setsockopt(new_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        pool.addTask(new_socket);
     }
+}
+
+static const size_t MAX_LINE_LENGTH = 64 * 1024;
+
+static bool sendAll(int socket, const std::string &data)
+{
+    size_t sent = 0;
+    while (sent < data.size())
+    {
+        ssize_t n = send(socket, data.data() + sent, data.size() - sent, MSG_NOSIGNAL);
+        if (n < 0 && errno == EINTR)
+        {
+            continue;
+        }
+        if (n <= 0)
+        {
+            return false;
+        }
+        sent += static_cast<size_t>(n);
+    }
+    return true;
+}
+
+std::string App::processLine(const std::string &line)
+{
+    bool onlySpaces = std::none_of(line.begin(), line.end(), [](unsigned char c)
+                                   { return c != ' ' && std::isspace(c); });
+    if (!onlySpaces)
+    {
+        return "400 Bad Request\n";
+    }
+
+    std::istringstream input(line);
+    std::string command;
+    input >> command;
+    std::ostringstream output;
+    if (executeCommand(command, input, output))
+    {
+        manager.saveData(dataFile);
+    }
+    return output.str() + "\n";
 }
 
 void App::handleClient(int client_socket)
 {
+    std::string buffer;
+    char chunk[4096];
     while (true)
     {
-        std::string received_message = receiveMessage(client_socket);
-        if (received_message.empty())  // If no message is received, terminate the loop
+        // The buffer may contain several requests or only part of one.
+        size_t newline;
+        while ((newline = buffer.find('\n')) != std::string::npos)
         {
-            break;
+            std::string line = buffer.substr(0, newline);
+            buffer.erase(0, newline + 1);
+            if (!line.empty() && line.back() == '\r')
+            {
+                line.pop_back();
+            }
+            if (!sendAll(client_socket, processLine(line)))
+            {
+                return;
+            }
         }
-        std::istringstream input(received_message);
-        std::string command;
-        input >> command;
-        std::ostringstream output;
-        executeCommand(command, input, output);  // Execute the command and capture the output
-        std::string response = output.str();    // Convert output to string
-
-        send(client_socket, response.c_str(), response.length(), 0);  // Send the response to the client
-        manager.saveData(dataFile);  // Save data after handling each client
+        if (buffer.size() > MAX_LINE_LENGTH)
+        {
+            sendAll(client_socket, "400 Bad Request\n");
+            return;
+        }
+        ssize_t bytes_read = read(client_socket, chunk, sizeof(chunk));
+        if (bytes_read < 0 && errno == EINTR)
+        {
+            continue;
+        }
+        if (bytes_read <= 0)
+        {
+            return;
+        }
+        buffer.append(chunk, static_cast<size_t>(bytes_read));
     }
-    close(client_socket);  // Close the client socket after finishing the communication
 }
 
-// Receives a message from the client socket
-std::string App::receiveMessage(int client_socket)
-{
-    std::vector<char> buffer(1024);  // Buffer to store incoming data
-    std::string message;
-    ssize_t bytes_read;
-
-    // Read data until a newline or EOF is encountered
-    while ((bytes_read = read(client_socket, buffer.data(), buffer.size())) > 0)
-    {
-        message.append(buffer.data(), bytes_read);
-        if (message.find('\n') != std::string::npos)  // End of message found
-        {
-            break; 
-        }
-    }
-    return message;
-}
-
-void App::executeCommand(const std::string &name, std::istringstream &input, std::ostringstream &output)
+bool App::executeCommand(const std::string &name, std::istringstream &input, std::ostringstream &output)
 {
     auto it = commands.find(name);
-    if (it != commands.end())  // If the command is found in the map
+    if (it == commands.end())
     {
-        it->second->execute(input, output);  // Execute the corresponding command
+        output << "400 Bad Request";
+        return false;
     }
-    else
-    {
-        output << "400 Bad Request";  // Return an error if command is not found
-    }
+    it->second->execute(input, output);
+    return it->second->mutates();
 }

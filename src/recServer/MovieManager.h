@@ -3,27 +3,34 @@
 
 #include "user.h"
 
-#include <vector>
-#include <string>
-#include <shared_mutex>
 #include <mutex>
-
+#include <optional>
+#include <shared_mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 class MovieManager
 {
 private:
-    std::vector<User> users; // set of all the users in the program.
+    std::unordered_map<std::string, User> users;
     mutable std::shared_mutex managerMutex;
+    mutable std::mutex saveMutex;
+    User *findUser(const std::string &userId);
+    const User *findUser(const std::string &userId) const;
+    User &getOrCreateUser(const std::string &userId);
+    static int countCommonMovies(const User &a, const User &b);
 
 public:
-    bool addUser(const std::string &userId);                                                       // adding the user to the program.
-    User getUser(const std::string &userId);                                                       // getting the user.
-    bool addMovies(const std::string &userId, const std::vector<std::string> &movieIds);     // add movies to this given user.
-    bool deleteMovies(const std::string &userId, const std::vector<std::string> &movieIds);     // delete movies to this given user.
-    void saveData(const std::string &filename) const;                                                    // saving the data to this file.
-    void loadData(const std::string &filename);                                                          // loading the data from this file.
-    int countCommonMovies(User user1, User user2);                                                       // count the amount of common movies between users.
-    std::vector<std::string> recommendMovies(std::string userid, std::string movieId); // algorythm for calculatr recommendation
+    bool addUser(const std::string &userId);
+    std::optional<User> getUser(const std::string &userId) const;
+    bool addMovies(const std::string &userId, const std::vector<std::string> &movieIds);
+    void addUserMovies(const std::string &userId, const std::vector<std::string> &movieIds);
+    bool deleteMovies(const std::string &userId, const std::vector<std::string> &movieIds);
+    void saveData(const std::string &filename) const;
+    void loadData(const std::string &filename); // loading the data from this file.
+
+    std::vector<std::string> recommendMovies(const std::string &userId, const std::string &movieId) const;
 };
 
 #endif
